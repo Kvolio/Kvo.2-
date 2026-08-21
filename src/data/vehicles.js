@@ -226,7 +226,8 @@ export const SU122 = {
   COMPONENTS: stdComponents(6.10, 3.00, 2.32, { engineName: 'V-2-34 diesel', diesel: true, engineHp: 190, fuelPerTank: 200 }),
   AMMO_RACKS: stdRacks(6.10, 3.00, 2.32, 40),
   COMPARTMENTS: stdCompartments,
-  L: { trunnionY: 1.30, trunnionZ: 1.9, barrelLength: 2.8, turretCentreZ: 1.9 },
+  // Trunnion set so the muzzle lands at the published 6.95 m overall length.
+  L: { trunnionY: 1.30, trunnionZ: 1.10, barrelLength: 2.8, turretCentreZ: 1.10 },
 };
 
 export const SU152 = {
@@ -258,7 +259,8 @@ export const SU152 = {
   COMPONENTS: stdComponents(6.75, 3.25, 2.45, { engineName: 'V-2K diesel', diesel: true, engineHp: 210, fuelPerTank: 200 }),
   AMMO_RACKS: stdRacks(6.75, 3.25, 2.45, 20),
   COMPARTMENTS: stdCompartments,
-  L: { trunnionY: 1.35, trunnionZ: 2.4, barrelLength: 4.24, turretCentreZ: 2.4 },
+  // Trunnion set so the muzzle lands at the published 8.95 m overall length.
+  L: { trunnionY: 1.35, trunnionZ: 1.34, barrelLength: 4.24, turretCentreZ: 1.34 },
 };
 
 export const SU76M = {
@@ -287,7 +289,9 @@ export const SU76M = {
   COMPONENTS: stdComponents(4.88, 2.73, 2.17, { engineName: 'GAZ-203', engineFront: true, engineHp: 100, fuelPerTank: 130 }),
   AMMO_RACKS: stdRacks(4.88, 2.73, 2.17, 60),
   COMPARTMENTS: stdCompartments,
-  L: { trunnionY: 1.20, trunnionZ: 1.4, barrelLength: 3.4, turretCentreZ: 1.4 },
+  // The SU-76M's fighting compartment is at the REAR, so the trunnion sits
+  // behind the hull centre and the barrel lies over the whole vehicle.
+  L: { trunnionY: 1.20, trunnionZ: -0.96, barrelLength: 3.4, turretCentreZ: -0.96 },
 };
 
 /** Towed guns. Dug in, hard to see, and their crews do not run. */
@@ -331,7 +335,7 @@ export const K52_AA = {
   dims: { lengthWithGun: 7.05, hullLength: 2.60, width: 2.15, height: 2.25, groundClearance: 0.40 },
   armament: { main: 'k52', ammoCapacity: 48, defaultLoadout: { br365: 28, of350: 20 } },
   fixedGun: { traverseLimit: Math.PI },
-  L: { trunnionY: 1.35, trunnionZ: 0.3, barrelLength: 4.693, turretCentreZ: 0 },
+  L: { trunnionY: 1.55, trunnionZ: 0.3, barrelLength: 4.693, turretCentreZ: 0 },
   threatNote: 'This gun will go through a Tiger’s front plate at a kilometre. Kill it first.',
 };
 
@@ -430,7 +434,8 @@ export const STUG3_G = {
   COMPONENTS: stdComponents(5.56, 2.95, 2.16, { engineName: 'HL 120 TRM', engineHp: 150, fuelPerTank: 110 }),
   AMMO_RACKS: stdRacks(5.56, 2.95, 2.16, 54),
   COMPARTMENTS: stdCompartments,
-  L: { trunnionY: 1.25, trunnionZ: 1.9, barrelLength: 3.6, turretCentreZ: 1.9 },
+  // Trunnion set so the muzzle lands at the published 6.85 m overall length.
+  L: { trunnionY: 1.25, trunnionZ: 0.47, barrelLength: 3.6, turretCentreZ: 0.47 },
 };
 
 /** Sd.Kfz. 9 FAMO — the 18-tonne half-track. It took three of these to move a Tiger. */
