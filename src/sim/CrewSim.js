@@ -131,7 +131,9 @@ export class Crewman {
   wound(severity, cause = 'fragment') {
     if (this.state === HEALTH_STATE.DEAD) return null;
     const before = this.state;
-    this.health = clamp01(this.health - severity * 0.85);
+    // severity 1.0 is a full-power strike on this man and must be able to kill
+    // him outright. Anything less leaves him alive and in trouble.
+    this.health = clamp01(this.health - severity * 1.05);
     this.shock = clamp01(this.shock + severity * 0.9);
     this.stress = clamp01(this.stress + severity * 0.55 + 0.10);
 
