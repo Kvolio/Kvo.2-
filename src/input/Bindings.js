@@ -15,6 +15,7 @@ export const DEFAULT_BINDINGS = {
   commanderMode: ['KeyC'],        // cycle buttoned up / hatch open / head out
   openHatch: ['KeyH'],
   binoculars: ['KeyB'],
+  gunnerSight: ['KeyV'],
   map: ['KeyM'],
   commandMenu: ['Tab'],
   radio: ['KeyR'],
@@ -52,7 +53,8 @@ export const BINDING_LABELS = {
   walkLeft: 'Walk left', walkRight: 'Walk right',
   run: 'Run', crouch: 'Crouch', interact: 'Interact',
   commanderMode: 'Cycle commander position', openHatch: 'Open / close hatch',
-  binoculars: 'Binoculars', map: 'Map', commandMenu: 'Command menu',
+  binoculars: 'Binoculars', gunnerSight: 'Look through the gunner’s sight',
+  map: 'Map', commandMenu: 'Command menu',
   radio: 'Radio log', crewStatus: 'Crew status', damageReport: 'Damage report',
   ballisticsInspector: 'Ballistics inspector',
   quickDriver: 'Driver commands', quickGunner: 'Gunner commands',

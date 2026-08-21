@@ -784,10 +784,19 @@ export class Game {
           break;
         }
         case 'hold': {
-          const enemiesClose = this.world.vehicles.some((v) =>
-            v.faction === 'soviet' && !v.destroyed
-            && Math.hypot(v.pos.x - t.pos.x, v.pos.z - t.pos.z) < 1400);
-          if (!enemiesClose || true) o.progress += dt;
+          // Holding means being in the position. The clock runs while the Tiger
+          // is within reach of the ground it was told to hold, and stops the
+          // moment it withdraws — which is what makes "hold for twenty minutes"
+          // a decision rather than a timer.
+          if (!o.anchor) o.anchor = { x: t.pos.x, z: t.pos.z };
+          const fromPost = Math.hypot(t.pos.x - o.anchor.x, t.pos.z - o.anchor.z);
+          const holding = fromPost < 400 && !t.abandoned && !t.destroyed;
+          o.holding = holding;
+          if (holding) o.progress += dt;
+          else if (!o._warned || this.world.time - o._warned > 20) {
+            o._warned = this.world.time;
+            this.hud.warn('You have left the position you were told to hold', 'info', 5);
+          }
           if (o.progress >= o.seconds) o.complete = true;
           break;
         }
@@ -1022,7 +1031,8 @@ export class Game {
       this.touch.setContext(contextualButtons({
         mode: this.view === VIEW.HEAD_OUT ? 'head_out'
           : this.view === VIEW.HATCH_OPEN ? 'hatch_open'
-            : this.view === VIEW.BINOCULARS ? 'binoculars' : 'buttoned',
+            : this.view === VIEW.BINOCULARS ? 'binoculars'
+              : this.view === VIEW.GUNNER_SIGHT ? 'gunner_sight' : 'buttoned',
         tiger: t, inTank: this.player.inTank,
         nearInteraction: this.nearInteraction,
         repair: this.repair, recovery: this.recovery, abandonment: this.abandonment,
@@ -1195,6 +1205,7 @@ export class Game {
     if (i.actions.has('commanderMode')) this.cycleView();
     if (i.actions.has('openHatch')) this.toggleHatch();
     if (i.actions.has('binoculars')) this.toggleBinoculars();
+    if (i.actions.has('gunnerSight')) this.toggleGunnerSight();
     if (i.actions.has('map')) this.openMap();
     if (i.actions.has('crewStatus')) this.hud.toggleCrew(this.tiger.crewManager, this.commanderMan);
     if (i.actions.has('damageReport')) this.hud.toggleDamage(this.tiger);
@@ -1283,6 +1294,7 @@ export class Game {
           line: Object.entries(this.campaign.logistics.spares)
             .map(([k, n]) => `${n} ${k.replace(/([A-Z])/g, ' $1').toLowerCase()}`).join(', ') });
         break;
+      case 'enter_commander': this.beginMission(); break;
       case 'mount_up': this.beginMission(); break;
       default:
         if (point.crew) this._crewChat(point.crew);
@@ -1326,26 +1338,28 @@ export class Game {
     this.hud.addSubtitle({ role: 'system', name: '', tone: 'calm', line });
   }
 
+  /**
+   * Climb onto the hull. The player walks the deck rather than being teleported
+   * into the tank, and the cupola only becomes an entry point once he is up
+   * there — which is why the interaction is added here rather than existing
+   * from the start.
+   */
   _climbOnTiger() {
+    if (this.player.onHull) return;
     this.player.onHull = true;
-    this.player.pos.set(0, 1.85, 1.2);
-    this.hud.addSubtitle({ role: 'system', name: '', tone: 'calm',
-      line: 'You are on the hull. Move to the cupola and press interact to take the commander\'s position.' });
-    // The cupola becomes an interaction point once you are up.
-    this.staging.userData.interactions.push({
-      id: 'enter_commander', label: 'ENTER COMMANDER POSITION',
-      pos: new THREE.Vector3(-0.46, 2.4, 0.12), radius: 1.8,
+    this.player.pos.set(0, L.hullRoofY, 1.2);
+    this.hud.addSubtitle({
+      role: 'system', name: '', tone: 'calm',
+      line: 'You are on the hull. Move to the cupola and take the commander’s position.',
     });
-    this.staging.userData.interactions.find((p) => p.id === 'enter_commander').action = 'enter';
-    const orig = this._doInteraction.bind(this);
-    if (!this._enterPatched) {
-      this._enterPatched = true;
-      const self = this;
-      const prev = this._doInteraction.bind(this);
-      this._doInteraction = function (point) {
-        if (point.id === 'enter_commander') { self.beginMission(); return; }
-        prev(point);
-      };
+    const points = this.staging.userData.interactions;
+    if (!points.some((p) => p.id === 'enter_commander')) {
+      points.push({
+        id: 'enter_commander',
+        label: 'ENTER COMMANDER POSITION',
+        pos: new THREE.Vector3(-0.46, L.turretRoofY + 0.2, L.turretCentreZ + 0.12),
+        radius: 2.0,
+      });
     }
   }
 
@@ -1394,6 +1408,7 @@ export class Game {
       [VIEW.HATCH_OPEN]: 'Hatch open, head down. Better, and you are still behind armour.',
       [VIEW.HEAD_OUT]: 'Head out. You can see and hear everything — and so can they.',
       [VIEW.BINOCULARS]: 'Binoculars up. Six times magnification, and no peripheral vision at all.',
+      [VIEW.GUNNER_SIGHT]: 'Through the gunner’s TZF 9b. Two and a half times, twenty-five degrees, and blind to everything else.',
     }[v];
     if (desc && prev !== v) this.hud.addSubtitle({ role: 'system', name: '', tone: 'calm', line: desc });
 
@@ -1412,6 +1427,34 @@ export class Game {
     this.hud.addSubtitle({
       role: 'system', name: '', tone: 'calm',
       line: open ? 'Cupola hatch open.' : 'Cupola hatch closed and dogged.',
+    });
+  }
+
+  /**
+   * The commander leans across and looks through the gunner's TZF 9b. It is his
+   * best optic — 2.5x with a ranging reticle — and using it costs him all
+   * awareness outside the gunner's 25-degree field, which is exactly the trade
+   * a real commander made when he checked a lay himself.
+   */
+  toggleGunnerSight() {
+    if (!this.player.inTank) return;
+    if (this.view === VIEW.GUNNER_SIGHT) {
+      this.setView(this.tiger.hatchOpen.cupola_hatch ? VIEW.HATCH_OPEN : VIEW.BUTTONED);
+      return;
+    }
+    if (this.tiger.components.gunner_sight?.destroyed) {
+      this.hud.warn('The gunner’s sight is smashed.', 'refused', 3);
+      return;
+    }
+    const gunner = this.tiger.crewManager?.get('gunner');
+    if (!gunner) {
+      this.hud.warn('There is nobody at the gunner’s station.', 'refused', 3);
+      return;
+    }
+    this.setView(VIEW.GUNNER_SIGHT);
+    this.hud.addSubtitle({
+      role: 'commander', name: this.commanderMan?.name || 'Commander', tone: 'calm',
+      line: 'Let me see.',
     });
   }
 

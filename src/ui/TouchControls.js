@@ -146,6 +146,9 @@ export function contextualButtons(state) {
   // The gun.
   if (tiger?.loadedRound) out.push({ id: 'quickFire', label: 'FIRE' });
   out.push({ id: 'quickTarget', label: 'TARGET' });
+  if (!tiger?.components.gunner_sight?.destroyed) {
+    out.push({ id: 'gunnerSight', label: mode === 'gunner_sight' ? 'BACK' : 'GUNNER SIGHT' });
+  }
 
   // Emergencies appear ONLY when they are emergencies.
   if (tiger?.fire?.active) {
