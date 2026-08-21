@@ -73,7 +73,8 @@ export class Renderer {
     this.renderer.shadowMap.enabled = this.q.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.06, 4200);
@@ -85,8 +86,20 @@ export class Renderer {
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
-    this.hemi = new THREE.HemisphereLight(0xa8b8c8, 0x5a4a32, 0.55);
+    // The direction the sun comes FROM, set by setEnvironment. The shadow
+    // frustum follows the camera, so the light has to be re-placed every frame
+    // relative to it — and it must use this vector, not whatever position the
+    // light happened to be at when the first frame was drawn.
+    this.sunDirection = new THREE.Vector3(0.62, 0.55, 0.55).normalize();
+    this.sunDistance = 260;
+
+    this.hemi = new THREE.HemisphereLight(0xa8b8c8, 0x6a5a3e, 0.9);
     this.scene.add(this.hemi);
+
+    // A little flat fill so that nothing on the battlefield is ever pitch black.
+    // A Tiger's flanks in the shade of its own hull should still read as steel.
+    this.ambient = new THREE.AmbientLight(0xb8c4d0, 0.35);
+    this.scene.add(this.ambient);
 
     // A dim fill inside the tank so the interior is legible without being lit
     // like a studio. Tigers had one small turret lamp.
@@ -159,33 +172,48 @@ export class Renderer {
     this.scene.fog.color.copy(sky);
     this.scene.fog.density = t.fogDensity * w.fogMul * this.q.fogQuality;
 
-    const el = t.sunAngle * Math.PI / 180;
+    // Morning sun low and to the east; afternoon high; evening low and orange.
+    const el = Math.max(4, t.sunAngle) * Math.PI / 180;
     const az = 0.7;
-    const d = 260;
-    this.sun.position.set(Math.cos(az) * Math.cos(el) * d, Math.sin(el) * d, Math.sin(az) * Math.cos(el) * d);
+    this.sunDirection.set(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)).normalize();
     this.sun.color.set(t.sun);
-    this.sun.intensity = 2.4 * t.lightFactor * (1 - w.cloud * 0.55);
-    this.hemi.intensity = 0.35 + t.ambient * (0.6 + w.cloud * 0.5);
+    // three.js uses physical light units, and a sun 22 degrees above the horizon
+    // only delivers sin(22) of its irradiance to flat ground. These numbers are
+    // calibrated so a Dunkelgelb hull and a rye field both read correctly in the
+    // morning light rather than sinking into the dark.
+    this.sun.intensity = 5.0 * t.lightFactor * (1 - w.cloud * 0.45);
+    // Overcast and rain do not darken the world so much as flatten it: less sun,
+    // more sky.
+    this.hemi.intensity = 1.5 + t.ambient * (1.1 + w.cloud * 1.2);
     this.hemi.color.copy(sky);
+    this.ambient.intensity = 0.55 + w.cloud * 0.35;
+    this.ambient.color.copy(sky);
 
-    // At night the only useful light is what is burning.
+    // At night the only useful light is the moon, and whatever is burning.
     if (timeOfDay === 'night') {
-      this.sun.intensity = 0.10;
-      this.hemi.intensity = 0.12;
+      // Moonlight only. Muzzle flashes and burning vehicles become the main
+      // source of information, which is the whole point of a night action.
+      this.sun.intensity = 0.45;
+      this.hemi.intensity = 0.42;
+      this.ambient.intensity = 0.20;
       this.renderer.toneMappingExposure = 1.5;
     } else {
-      this.renderer.toneMappingExposure = 1.0;
+      this.renderer.toneMappingExposure = 1.05;
     }
 
     return this.env;
   }
 
-  /** Keep the shadow frustum around the camera so it stays sharp. */
+  /**
+   * Keep the shadow frustum around the camera so it stays sharp over a 3 km map.
+   * The light is re-placed relative to the camera every frame along the sun
+   * direction set by setEnvironment.
+   */
   updateShadowFrustum(focus) {
-    if (!this.q.shadows) return;
     this.sun.target.position.copy(focus);
-    this.sun.position.copy(focus).add(this._sunOffset ||= this.sun.position.clone().normalize().multiplyScalar(260));
     this.sun.target.updateMatrixWorld();
+    this.sun.position.copy(focus).addScaledVector(this.sunDirection, this.sunDistance);
+    this.sun.updateMatrixWorld();
   }
 
   /**

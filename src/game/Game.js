@@ -461,10 +461,16 @@ export class Game {
     for (const role of ['gunner', 'loader', 'driver', 'radio']) {
       const st = STATIONS[role];
       const fig = buildFigure({ kit: 'panzer' });
-      fig.scale.setScalar(0.94);
-      fig.position.set(st.seat[0], st.seat[1] - 0.86, st.seat[2]);
-      fig.userData.baseY = st.seat[1] - 0.86;
-      fig.rotation.y = role === 'loader' ? -0.3 : role === 'gunner' ? 0.2 : 0;
+      // buildFigure puts the head at 1.52 m above the figure's origin, so the
+      // origin has to sit that far below the station's real eye height or the
+      // crew stand up through the turret roof.
+      const eyeY = (st.eye || st.seat)[1];
+      const baseY = eyeY - 1.52;
+      fig.position.set(st.seat[0], baseY, st.seat[2]);
+      fig.userData.baseY = baseY;
+      // Each man faces his own work: the gunner into his sight, the loader at
+      // the breech and his ready rack, the hull crew forward.
+      fig.rotation.y = role === 'loader' ? -0.45 : role === 'gunner' ? 0.18 : 0;
       if (st.onTurret) this.interiorModel.add(fig);
       else this.tigerGroup.add(fig);
       this.crewFigures[role] = fig;
@@ -926,8 +932,9 @@ export class Game {
       fig.visible = !man.outsideTank;
       const pose = man.state === 'dead' ? 'prone'
         : man.state === 'incapacitated' || man.state === 'seriously wounded' ? 'wounded'
-          : role === 'loader' && this.tiger.reloading ? 'work'
-            : role === 'gunner' ? 'kneel' : 'idle';
+          : (role === 'loader' && this.tiger.reloading) ? 'seated_work'
+            : (role === 'gunner' && this.commands?.gunnerSearch) ? 'seated_work'
+              : 'seated';
       poseFigure(fig, pose, dt);
     }
 
@@ -1032,6 +1039,7 @@ export class Game {
     this.camera = cam;
 
     if (this.player.onFoot) {
+      if (this.interiorModel) this.interiorModel.visible = false;
       cam.position.set(
         this.player.pos.x,
         this.player.pos.y + this.player.height * (this.input.intent.crouch ? 0.62 : 1),
@@ -1110,8 +1118,11 @@ export class Game {
     this.renderer.setInteriorLighting(inside, cam.position,
       this.tiger.hatchOpen.cupola_hatch);
 
-    // The interior is only worth drawing when you can see it.
-    this.interiorModel.visible = this.view !== VIEW.HEAD_OUT && this.view !== VIEW.BINOCULARS;
+    // The interior is only drawn when the camera is genuinely inside the tank.
+    // Otherwise the ivory turret walls and the red-oxide hull sides poke out
+    // through the armour, which looks exactly as wrong as it sounds.
+    this.interiorModel.visible = this.view === VIEW.BUTTONED
+      || this.view === VIEW.HATCH_OPEN || this.view === VIEW.GUNNER_SIGHT;
     // The cupola drum is an inch from his face when buttoned up; hiding it is
     // what lets him actually see out through the vision blocks.
     const drum = this.interiorModel.userData.cupolaDrum;

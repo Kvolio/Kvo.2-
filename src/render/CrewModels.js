@@ -162,6 +162,26 @@ export function poseFigure(fig, pose, dt, speed = 1) {
       set(u.legs[0], -s * 0.4, Math.max(0, s) * 0.4);
       set(u.legs[1], s * 0.4, Math.max(0, -s) * 0.4);
       break;
+    case 'seated':
+      // A man in a tank seat: knees up, back against the seat, hands at his
+      // controls. Tiger stations are cramped and this is how they sat.
+      set(u.legs[0], -1.45, 1.35);
+      set(u.legs[1], -1.45, 1.35);
+      set(u.arms[0], -0.75 + Math.sin(u.phase * 0.4) * 0.05, -1.05);
+      set(u.arms[1], -0.75 + Math.sin(u.phase * 0.4 + 1) * 0.05, -1.05);
+      if (u.torso) u.torso.rotation.x = 0.06;
+      if (u.head) u.head.rotation.y = Math.sin(u.phase * 0.2) * 0.22;
+      fig.position.y = fig.userData.baseY ?? 0;
+      break;
+    case 'seated_work':
+      // The loader reaching for a round, or the gunner cranking a handwheel.
+      set(u.legs[0], -1.45, 1.35);
+      set(u.legs[1], -1.45, 1.35);
+      set(u.arms[0], -1.25 + Math.sin(u.phase * 1.6) * 0.45, -0.8);
+      set(u.arms[1], -1.10 - Math.sin(u.phase * 1.6) * 0.30, -0.9);
+      if (u.torso) u.torso.rotation.x = 0.22 + Math.sin(u.phase * 1.6) * 0.1;
+      fig.position.y = fig.userData.baseY ?? 0;
+      break;
     case 'prone':
       fig.rotation.x = -Math.PI / 2 + 0.1;
       fig.position.y = (fig.userData.baseY ?? 0) - 1.15;

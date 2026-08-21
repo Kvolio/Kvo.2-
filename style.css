@@ -230,8 +230,13 @@ html, body {
   padding: 6px 0 10px; text-align: center; }
 .insp-note { margin-top: 8px; color: #b09878; font-size: 11px; }
 
-/* Optics. */
-.hud-optics { position: absolute; inset: 0; pointer-events: none; }
+/* Optics. The mask sits UNDER the readouts — a commander buttoned up still has
+   his instruments, he just cannot see out of them. */
+.hud-optics { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.hud-subtitles, .hud-state, .hud-compass, .hud-warnings,
+.hud-radio, .hud-task, .hud-prompt { z-index: 3; }
+.hud-panel { z-index: 4; }
+.hud-vignette { z-index: 2; }
 .optic-mask {
   position: absolute; inset: 0;
   background: radial-gradient(circle at center,

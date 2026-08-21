@@ -385,7 +385,7 @@ export class Hud {
       // Buttoned up, the commander sees the world through a horizontal slit of
       // laminated glass about 130 mm wide. The mask IS the disadvantage.
       const sw = w * 0.30, sh = h * 0.19;
-      ctx.fillStyle = 'rgba(4,5,4,0.97)';
+      ctx.fillStyle = 'rgba(5,6,5,0.94)';
       ctx.beginPath();
       ctx.rect(0, 0, w, h);
       // Rounded slit cut out of an otherwise black screen.

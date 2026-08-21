@@ -76,7 +76,10 @@ function buildRunningGear(side, lod) {
   const spacing = (L.trackContact - 0.60) / (stations - 1);
 
   // Three ranks at different lateral offsets — that is the interleaving.
-  const rankOffsets = lod === 0 ? [1.06, 1.30, 1.52] : lod === 1 ? [1.10, 1.42] : [1.28];
+  // Three overlapping ranks. The outer rank sits proud of the track's inner
+  // face so the interleaving actually reads from the side, which is the single
+  // most recognisable thing about a Tiger's running gear.
+  const rankOffsets = lod === 0 ? [1.18, 1.36, 1.54] : lod === 1 ? [1.22, 1.50] : [1.40];
   const wheelSeg = lod === 0 ? 20 : lod === 1 ? 12 : 8;
 
   const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.10, wheelSeg);
@@ -200,6 +203,38 @@ function buildTrack(side, lod) {
   inst.instanceMatrix.needsUpdate = true;
   inst.userData = { path, sx, linkCount, offset: 0 };
   return inst;
+}
+
+/**
+ * The outer face of the track run: the flat band of link edges you actually see
+ * from the side of a Tiger, with the horns of the guide teeth above it.
+ */
+function buildTrackFace(side, lod) {
+  const g = new THREE.Group();
+  const sx = side;
+  const x = sx * (1.49 + L.trackWidth / 2 - 0.01);
+  const axleY = L.roadWheelDia / 2 + TRACK_THICKNESS;
+  const len = L.trackContact;
+  // Bottom run, on the ground.
+  const bottom = new THREE.Mesh(new THREE.BoxGeometry(0.02, TRACK_THICKNESS * 1.4, len), M.track());
+  bottom.position.set(x, TRACK_THICKNESS / 2, 0);
+  g.add(bottom);
+  // Top run, over the wheels.
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.02, TRACK_THICKNESS * 1.4, len * 0.92), M.track());
+  top.position.set(x, axleY + L.roadWheelDia / 2 + TRACK_THICKNESS, 0);
+  g.add(top);
+  if (lod < 2) {
+    // Guide horns along the outer edge.
+    const n = lod === 0 ? 16 : 9;
+    for (let i = 0; i < n; i++) {
+      const z = -len / 2 + (i / (n - 1)) * len;
+      const horn = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.06), M.track());
+      horn.position.set(x, TRACK_THICKNESS + 0.02, z);
+      g.add(horn);
+    }
+  }
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
 }
 
 /** The engine deck: armoured louvres, radiator hatches, and the crew's stowage. */
@@ -662,6 +697,7 @@ export function buildTiger(opts = {}) {
   const trackL = buildTrack(-1, lod);
   const trackR = buildTrack(1, lod);
   root.add(trackL, trackR);
+  root.add(buildTrackFace(-1, lod), buildTrackFace(1, lod));
 
   // ---- Turret --------------------------------------------------------------
   const turret = buildTurret(lod);

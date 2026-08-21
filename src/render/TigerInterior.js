@@ -425,9 +425,19 @@ export function buildInterior(opts = {}) {
   g.add(ring);
 
   // Hull interior below the ring: red oxide primer, as it left the works.
-  g.add(box(L.hullWidthUpper - 0.20, 0.02, 5.0, M.interiorLower(), 0, L.hullFloorY + 0.02, 0.2));
+  // The FLOOR is only as wide as the tub between the tracks, and the sponson
+  // walls start at the sponson floor — below that line a Tiger is open, and
+  // anything drawn there pokes out through the running gear.
+  g.add(box(L.hullWidthLower - 0.06, 0.02, 5.0, M.interiorLower(), 0, L.hullFloorY + 0.02, 0.2));
   for (const sx of [-1, 1]) {
-    g.add(box(0.03, 1.20, 5.0, M.interiorLower(), sx * (L.hullHalfWU - 0.09), 1.10, 0.2));
+    // Tub side, from the floor up to the sponson.
+    g.add(box(0.03, L.sponsonFloorY - L.hullFloorY, 5.0, M.interiorLower(),
+      sx * (L.hullHalfWL - 0.02), (L.hullFloorY + L.sponsonFloorY) / 2, 0.2));
+    // Sponson underside and outer wall, above the track line.
+    g.add(box(L.hullHalfWU - L.hullHalfWL, 0.03, 5.0, M.interiorLower(),
+      sx * (L.hullHalfWL + (L.hullHalfWU - L.hullHalfWL) / 2), L.sponsonFloorY, 0.2));
+    g.add(box(0.03, L.hullRoofY - L.sponsonFloorY, 5.0, M.interiorLower(),
+      sx * (L.hullHalfWU - 0.10), (L.sponsonFloorY + L.hullRoofY) / 2, 0.2));
   }
   // Forward bulkhead and the driver's compartment ceiling.
   g.add(box(L.hullWidthUpper - 0.20, 0.03, 1.6, M.interior(), 0, L.hullRoofY - 0.03, 2.35));
