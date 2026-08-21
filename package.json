@@ -1,0 +1,12 @@
+{
+  "name": "tiger-crew-simulator",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "First-person Tiger I Ausf. H crew simulator — Operation Zitadelle, July 1943",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "test": "node --test tests/"
+  },
+  "dependencies": { "three": "0.169.0" }
+}
