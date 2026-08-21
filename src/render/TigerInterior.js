@@ -235,6 +235,9 @@ function buildCommanderStation() {
   drum.material.side = THREE.BackSide;
   drum.position.set(cx, (L.turretRoofY + L.cupolaTopY) / 2, cz + 0.07);
   g.add(drum);
+  // Hidden while the commander is buttoned up, because from inside the cupola he
+  // is looking THROUGH the vision blocks, not at the drum wall an inch from his face.
+  g.userData.cupolaDrum = drum;
 
   const blocks = [];
   for (let i = 0; i < 5; i++) {
@@ -470,6 +473,7 @@ export function buildInterior(opts = {}) {
   g.userData = {
     lod, commander, gunner, loader, breech, hull, ammo,
     sight: gunner.userData.sight,
+    cupolaDrum: commander.userData.cupolaDrum,
     fireLamp: hull.userData.fireLamp,
     readyRack: loader.userData.readyRack,
     visionBlocks: commander.userData.visionBlocks,

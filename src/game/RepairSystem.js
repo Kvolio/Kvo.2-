@@ -203,7 +203,12 @@ export class RepairSystem {
     if (!crewmen.length) return { ok: false, reason: 'None of those men can go out.' };
 
     const job = new RepairJob(componentId, spec, crewmen, { difficulty: this.difficulty });
-    job.totalSeconds = this._estimateSeconds(spec, crewmen, tiger);
+    const est = this._estimateSeconds(spec, crewmen, tiger, componentId);
+    job.totalSeconds = est.seconds;
+    // The rate the estimate assumed. Progress is measured against it, so a job
+    // done by the men who started it takes exactly the estimate — and takes
+    // longer the moment one of them is hit, tires, or loses his nerve.
+    job.plannedRate = est.rate;
     job.startedAt = this.world.time;
     job.state = REPAIR_STATE.DISMOUNTING;
     job.tiger = tiger;
@@ -237,28 +242,35 @@ export class RepairSystem {
    * More hands is faster, but with diminishing returns — four men cannot all
    * get at one track link at once.
    */
-  _estimateSeconds(spec, crewmen, tiger) {
+  _estimateSeconds(spec, crewmen, tiger, componentId) {
     let base = (spec.repairMinutes ?? 12) * 60;
 
     // Destroyed is a much bigger job than merely damaged.
-    const st = tiger.components[Object.keys(tiger.spec.COMPONENTS).find((k) => tiger.spec.COMPONENTS[k] === spec)];
+    const st = tiger.components[componentId];
     if (st?.destroyed) base *= 1.6;
 
+    const rate = this._workRate(crewmen, componentId);
+    let t = base / Math.max(0.25, rate);
+    t *= this.difficulty.repairTime ?? 1.0;
+    return { seconds: clamp(t, 45, 60 * 90), rate };
+  }
+
+  /**
+   * How fast this particular set of men can do this particular job right now.
+   * Training for the job, experience, wounds, fear and exhaustion all count,
+   * and extra hands help with diminishing returns because four men cannot all
+   * get at one track link at once.
+   */
+  _workRate(crewmen, componentId) {
     let effort = 0;
     for (const m of crewmen) {
       const apt = ROLE_APTITUDE[m.role] || {};
-      const aptitude = apt[this.job?.componentId] ?? apt.default ?? 1;
+      const aptitude = apt[componentId] ?? apt.default ?? 1;
       const skill = clamp01(m.skill.repair ?? m.experience);
-      // Experience, training for this job, and current condition all count.
       effort += (0.45 + skill * 0.85) * aptitude * clamp(m.effectiveness, 0.15, 1.3);
     }
-    // Diminishing returns on extra hands.
-    const hands = Math.pow(crewmen.length, 0.72) / Math.max(1, crewmen.length);
-    effort *= hands;
-
-    let t = base / Math.max(0.25, effort);
-    t *= this.difficulty.repairTime ?? 1.0;
-    return clamp(t, 45, 60 * 90);
+    const hands = Math.pow(Math.max(1, crewmen.length), 0.72) / Math.max(1, crewmen.length);
+    return effort * hands;
   }
 
   _consequences(tiger, crewmen) {
@@ -390,23 +402,19 @@ export class RepairSystem {
           break;
         }
 
-        // Rate scales with who is still standing and how frightened they are.
-        let rate = 0;
         for (const m of working) {
-          const apt = ROLE_APTITUDE[m.role] || {};
-          const aptitude = apt[job.componentId] ?? apt.default ?? 1;
-          rate += (0.45 + clamp01(m.skill.repair ?? m.experience) * 0.85)
-            * aptitude * clamp(m.effectiveness, 0.1, 1.3);
-          m.addFatigue(dt * 0.011);
+          m.addFatigue(dt * 0.00015);
           // Being shot at while kneeling beside a track is not conducive to work.
           if (m.stress > 0.6 && this.rng.next() < dt * 0.15) {
             tiger.crewManager.speak(m, 'repair.under_fire');
           }
         }
-        const hands = Math.pow(working.length, 0.72) / Math.max(1, working.length);
-        rate *= hands;
 
-        job.elapsed += dt * rate;
+        // Progress is measured against the rate the estimate assumed, so the
+        // job takes the quoted time if nothing goes wrong — and stretches out
+        // the moment a man is hit, tires, or is left working on his own.
+        const rate = this._workRate(working, job.componentId);
+        job.elapsed += dt * (rate / Math.max(0.05, job.plannedRate));
         job.progress = clamp01(job.elapsed / job.totalSeconds);
 
         // Subtle progress reports over the intercom. No giant progress bar.

@@ -10,7 +10,8 @@
 // ===========================================================================
 
 import { clamp, clamp01, DEG, normalizeAngle, clockToBearing, bearingToClock } from '../core/MathUtil.js';
-import { AMMO_ORDER_NAMES } from '../data/ammunition.js';
+import { AMMO_ORDER_NAMES, getProjectile } from '../data/ammunition.js';
+import { timeOfFlight } from '../sim/Ballistics.js';
 
 export const CMD = {
   // Driver
@@ -197,12 +198,19 @@ export class CommandSystem {
   }
 
   update(dt) {
-    for (let i = this.pending.length - 1; i >= 0; i--) {
-      if (this.world.time >= this.pending[i].at) {
-        const o = this.pending.splice(i, 1)[0];
-        this._execute(o.cmdId, o.arg);
+    // Orders must be carried out in the sequence they were given. Walking the
+    // queue backwards executed "engage" before "target", which cleared the
+    // authorisation the instant it was granted and the gun never fired.
+    if (this.pending.length) {
+      const due = [];
+      const waiting = [];
+      for (const o of this.pending) {
+        (this.world.time >= o.at ? due : waiting).push(o);
       }
+      this.pending = waiting;
+      for (const o of due) this._execute(o.cmdId, o.arg);
     }
+
     this._applyDriverIntent(dt);
     this._runGunnerEngagement(dt);
   }
@@ -429,6 +437,8 @@ export class CommandSystem {
             t.crewManager.speak(gunner, 'gunner.no_target', {}, true);
             this.gunnerSearch = null;
             this.designatedTarget = null;
+            this.engageAuthorised = false;
+            return;                       // there is nothing left to lay on
           }
         }
       }
@@ -455,9 +465,62 @@ export class CommandSystem {
 
     // "Engage" means he shoots when he is on and loaded, without being told again.
     if (this.engageAuthorised && !this.holdFire && laid && t.loadedRound) {
+      // A gunner does not put a round into the crest in front of him. If the
+      // ground masks the target he says so and holds, and the commander has to
+      // do something about the position rather than waste ammunition.
+      if (!this._hasClearShot(t, target)) {
+        if (!gs.maskedReported) {
+          gs.maskedReported = true;
+          this.tiger.crewManager?.speak(gunner, 'gunner.no_target', {}, true);
+          this.bus?.emit('command:refused', {
+            cmdId: 'gunner.engage',
+            reason: 'The gunner cannot see the target — the ground is in the way.',
+          });
+        }
+        return;
+      }
+      gs.maskedReported = false;
       const r = t.fireMainGun(this.world);
       if (r.ok) gs.reportedOn = false;
     }
+  }
+
+  /**
+   * Is there sky between the muzzle and the target, or is there a hill?
+   * Checked along the shell's actual arc, so a target behind a crest that the
+   * round would clear at the top of its trajectory is still a legal shot.
+   */
+  _hasClearShot(t, target) {
+    const terrain = this.world.terrain;
+    if (!terrain) return true;
+    const m = t.muzzle();
+    const dx = target.pos.x - m.pos.x;
+    const dz = target.pos.z - m.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 30) return true;
+    const proj = getProjectile(t.loadedRound || t.selectedAmmo || 'pzgr39');
+
+    // Use the barrel's ACTUAL world direction. The gun's elevation figure is
+    // relative to the hull and already carries the hull's tilt compensation, so
+    // reading it directly would mis-state the trajectory on any slope.
+    const horiz = Math.hypot(m.dir.x, m.dir.z) || 1;
+    const slope = m.dir.y / horiz;
+
+    const steps = Math.min(40, Math.max(6, Math.floor(dist / 40)));
+    // Start clear of the tank's own hull, and stop short of the target so the
+    // ground the target is standing on does not mask it.
+    for (let i = 1; i < steps - 1; i++) {
+      const f = i / steps;
+      const s = dist * f;
+      if (s < 25) continue;
+      const x = m.pos.x + dx * f;
+      const z = m.pos.z + dz * f;
+      const t_ = timeOfFlight(proj, s);
+      const y = m.pos.y + slope * s - 0.5 * 9.80665 * t_ * t_;
+      // A metre of clearance: a shell that shaves the crest still gets there.
+      if (terrain.heightAt(x, z) > y + 1.0) return false;
+    }
+    return true;
   }
 
   _targetNear(pos, radius) {

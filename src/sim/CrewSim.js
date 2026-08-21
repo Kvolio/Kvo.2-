@@ -183,11 +183,13 @@ export class Crewman {
       this.stress = clamp01(this.stress - decay * dt);
     }
 
-    // Work is tiring. Being outside the tank humping track links is very tiring.
+    // Work is tiring, and heaving 30 kg track links about in the open is very
+    // tiring — but over tens of minutes, not one. A man on a long track repair
+    // should be flagging by the time it is done, not exhausted in a minute.
     if (this.busyWith) {
-      this.addFatigue(dt * (this.outsideTank ? 0.010 : 0.0035));
+      this.addFatigue(dt * (this.outsideTank ? 0.00040 : 0.00015));
     } else {
-      this.fatigue = clamp01(this.fatigue - dt * 0.0012);
+      this.fatigue = clamp01(this.fatigue - dt * 0.00035);
     }
   }
 
@@ -401,7 +403,13 @@ export class CrewManager {
       this.underFireTimer -= dt;
       if (this.underFireTimer <= 0) this.underFire = false;
     }
-    for (const m of this.crew) m.update(dt, { underFire: this.underFire, ...ctx });
+    for (const m of this.crew) {
+      // Men outside the tank are stepped by the World, which knows about the
+      // danger they are standing in. Updating them here as well would double
+      // their bleeding and their exhaustion.
+      if (m.outsideTank) continue;
+      m.update(dt, { underFire: this.underFire, ...ctx });
+    }
     this._maybeChatter(dt, ctx);
   }
 

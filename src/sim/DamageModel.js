@@ -146,7 +146,7 @@ function traceInterior(ctx, ev, spall, hit) {
   // --- Crew ---
   for (const man of vehicle.crew || []) {
     if (!man || man.state === 'dead' || man.outsideTank) continue;
-    const st = spec.STATIONS[man.role];
+    const st = spec.STATIONS?.[man.role];
     if (!st) continue;
     let p = st.seat;
     if (st.onTurret) {
@@ -214,13 +214,13 @@ function distributeSpall(ctx, ev, spall, hit, scale) {
 
   for (const man of vehicle.crew || []) {
     if (!man || man.state === 'dead' || man.outsideTank) continue;
-    const st = spec.STATIONS[man.role];
+    const st = spec.STATIONS?.[man.role];
     if (!st) continue;
 
     // The commander's exposure depends on where his head physically is.
     let p = st.seat;
     if (man.role === 'commander') {
-      p = vehicle.commanderHeadOut ? st.eyeHeadOut : st.eyeButtonedUp;
+      p = (vehicle.commanderHeadOut ? st.eyeHeadOut : st.eyeButtonedUp) || st.seat;
     }
     if (st.onTurret) {
       const f = plateFrame({ centre: p, normal: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1], onTurret: true }, az);

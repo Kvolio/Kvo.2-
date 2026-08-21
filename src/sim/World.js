@@ -69,11 +69,15 @@ export class World {
       for (const v of this.vehicles) {
         if (v === p.shooter || v.destroyed) continue;
         // Cheap reject: is the swept segment anywhere near this vehicle?
-        const r = (v.spec.dims?.lengthWithGun ?? 7) * 0.6;
-        if (!this._segNearPoint(p.prev, p.pos, v.pos, r + 2.5)) continue;
+        // Cheap reject: could the swept segment have touched this vehicle at all?
+        // Use the hull's half-diagonal, not the gun length — a shell that passes
+        // the muzzle of a long gun has not hit the tank.
+        const d = v.spec.dims || {};
+        const r = Math.hypot((d.hullLength ?? 6) * 0.5, (d.width ?? 3) * 0.5, (d.height ?? 2.5) * 0.5);
+        if (!this._segNearPoint(p.prev, p.pos, v.pos, r + 1.5)) continue;
 
         const dir = p.direction;
-        const ev = v.receiveHit(p, p.pos, dir, this.difficulty);
+        const ev = v.receiveHit(p, p.pos, dir, this.difficulty, p.prev);
         if (ev) {
           consumed = true;
           this._registerImpact(p, v, ev);

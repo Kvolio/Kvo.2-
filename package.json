@@ -6,7 +6,12 @@
   "description": "First-person Tiger I Ausf. H crew simulator — Operation Zitadelle, July 1943",
   "scripts": {
     "start": "node tools/serve.js",
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.js"
   },
-  "dependencies": { "three": "0.169.0" }
+  "dependencies": {
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
 }

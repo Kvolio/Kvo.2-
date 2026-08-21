@@ -267,8 +267,13 @@ export class Vehicle {
     return (this.gun?.elevRate ?? 4 * DEG) * (gunner ? clamp(0.5 + gunner.effectiveness * 0.6, 0.3, 1.2) : 0.5);
   }
 
-  /** Point the gun at a world position. Returns true when it is laid on. */
-  layOn(worldPoint, dt) {
+  /**
+   * Point the gun at a world position. Returns true when it is laid on.
+   * "Laid on" means the gun is pointing closely enough that the shell will
+   * land on the target, so the tolerance comes from the target's angular size —
+   * a T-34 is about 3 m wide, which is 4.3 milliradians at 700 m.
+   */
+  layOn(worldPoint, dt, targetWidth = 3.0) {
     if (!this.gun) return false;
     const dx = worldPoint.x - this.pos.x;
     const dz = worldPoint.z - this.pos.z;
@@ -280,12 +285,23 @@ export class Vehicle {
     const dy = worldPoint.y - muzzleY;
     const proj = getProjectile(this.loadedRound || this.selectedAmmo || 'pzgr39');
     const se = superelevation(proj, Math.max(1, dist), dy);
-    this.gunTargetElev = clamp(se, this.gun.elevMin, this.gun.elevMax);
+
+    // The gun elevates relative to the HULL, not to the horizon. `se` is the
+    // angle the barrel must make with the world, so the gunner has to crank in
+    // whatever the hull is already leaning. Without this the tank shoots into
+    // the ground on every forward slope and over the target on every reverse
+    // one, which on the rolling ground of the salient is most of the time.
+    const az = this.turretTargetAz;
+    const hullTilt = this.pitch * Math.cos(az) + this.roll * Math.sin(az);
+    this.gunTargetElev = clamp(se + hullTilt, this.gun.elevMin, this.gun.elevMax);
 
     this.stepTurret(dt);
     const azErr = Math.abs(angleDelta(this.turretAz, this.turretTargetAz));
     const elErr = Math.abs(this.gunElev - this.gunTargetElev);
-    return azErr < 2 * DEG / 1000 * Math.max(200, dist) / 200 && elErr < 0.004;
+    // Half the target's angular width, floored so that a very close target does
+    // not demand impossible precision and a very distant one still demands care.
+    const tol = clamp((targetWidth * 0.5) / Math.max(50, dist), 0.0012, 0.030);
+    return azErr < tol && elErr < Math.max(tol, 0.003);
   }
 
   stepTurret(dt) {
@@ -390,14 +406,26 @@ export class Vehicle {
    * A shell arrives. Everything that follows is computed from the shell and the
    * plate — see src/sim/Penetration.js.
    */
-  receiveHit(projectile, worldPoint, worldDir, difficulty = {}) {
+  /**
+   * A shell arrives.
+   *
+   * `segStart` is where the projectile was at the START of the tick. At 773 m/s
+   * a shell covers nearly 13 m in one 60 Hz step, so by the time the collision
+   * is noticed the projectile is already well past the tank. Tracing from its
+   * end position would cast the ray away from the vehicle and miss it entirely.
+   */
+  receiveHit(projectile, worldPoint, worldDir, difficulty = {}, segStart = null) {
     const proj = projectile.data || getProjectile(projectile.projId);
-    const origin = {
-      x: worldPoint.x - worldDir.x * 0.5,
-      y: worldPoint.y - worldDir.y * 0.5,
-      z: worldPoint.z - worldDir.z * 0.5,
-    };
-    const hit = traceArmour(this, origin, worldDir, 40);
+    const origin = segStart
+      ? { x: segStart.x, y: segStart.y, z: segStart.z }
+      : {
+        x: worldPoint.x - worldDir.x * 0.5,
+        y: worldPoint.y - worldDir.y * 0.5,
+        z: worldPoint.z - worldDir.z * 0.5,
+      };
+    // Reach far enough to cross the whole swept segment plus the vehicle.
+    const reach = Math.hypot(worldPoint.x - origin.x, worldPoint.y - origin.y, worldPoint.z - origin.z) + 25;
+    const hit = traceArmour(this, origin, worldDir, reach);
     if (!hit) return null;
 
     let impactVel = projectile.speed ?? velocityAt(proj, projectile.distance || 0);

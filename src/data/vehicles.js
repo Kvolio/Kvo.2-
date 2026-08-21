@@ -72,6 +72,49 @@ function stdRacks(len, wid, ht, capacity) {
   ];
 }
 
+/**
+ * Crew stations for the secondary vehicles. Positions are approximate but real:
+ * a T-34's driver sits front-left with the radio operator beside him, and the
+ * two-man turret puts the commander/gunner left of the gun with the loader
+ * right of it. Men in these seats can be hit, and where they sit decides which
+ * of them a given shell finds.
+ */
+function stdStations(len, wid, ht, opts = {}) {
+  const turretY = ht * 0.72;
+  const hullY = ht * 0.42;
+  const frontZ = opts.engineFront ? -len * 0.18 : len * 0.28;
+  return {
+    commander: { label: 'Commander', role: 'commander', onTurret: true,
+      seat: [-wid * 0.14, turretY, -0.10], eye: [-wid * 0.14, turretY + 0.34, -0.10],
+      eyeButtonedUp: [-wid * 0.14, turretY + 0.34, -0.10],
+      eyeHeadOut: [-wid * 0.14, turretY + 0.75, -0.10],
+      hatch: 'turret_hatch', exitTimeS: 4.5,
+      vision: { fovDeg: 60, magnification: 1 } },
+    gunner: { label: 'Gunner', role: 'gunner', onTurret: true,
+      seat: [-wid * 0.14, turretY, 0.10], eye: [-wid * 0.14, turretY + 0.30, 0.30],
+      hatch: 'turret_hatch', exitTimeS: 6.0,
+      vision: { fovDeg: 26, magnification: 2.5 } },
+    loader: { label: 'Loader', role: 'loader', onTurret: true,
+      seat: [wid * 0.16, turretY, 0.02], eye: [wid * 0.16, turretY + 0.34, 0.02],
+      hatch: 'turret_hatch', exitTimeS: 4.0,
+      vision: { fovDeg: 40, magnification: 1 } },
+    driver: { label: 'Driver', role: 'driver', onTurret: false,
+      seat: [-wid * 0.18, hullY, frontZ], eye: [-wid * 0.18, hullY + 0.34, frontZ + 0.3],
+      hatch: 'driver_hatch', exitTimeS: 5.0,
+      vision: { fovDeg: 30, magnification: 1 } },
+    radio: { label: 'Radio operator', role: 'radio', onTurret: false,
+      seat: [wid * 0.18, hullY, frontZ], eye: [wid * 0.18, hullY + 0.34, frontZ + 0.3],
+      hatch: 'radio_hatch', exitTimeS: 5.0,
+      vision: { fovDeg: 22, magnification: 1.8 } },
+  };
+}
+
+const stdHatches = {
+  turret_hatch: { label: 'turret hatch', pos: [0, 2.3, 0], onTurret: true, openTimeS: 1.4, type: 'hinged' },
+  driver_hatch: { label: 'driver’s hatch', pos: [-0.6, 1.5, 2.2], onTurret: false, openTimeS: 1.6, type: 'hinged' },
+  radio_hatch: { label: 'radio operator’s hatch', pos: [0.6, 1.5, 2.2], onTurret: false, openTimeS: 1.6, type: 'hinged' },
+};
+
 const stdCompartments = {
   driver_compartment: { label: 'driver’s compartment', min: [-1.4, 0.3, 0.6], max: [1.4, 1.6, 3.2] },
   fighting_compartment: { label: 'fighting compartment', min: [-1.4, 0.3, -1.0], max: [1.4, 1.6, 1.0] },
@@ -126,6 +169,7 @@ export const T34_1943 = {
       { onTurret: false, behind: 'turret', weakPoint: 'turret_ring', quality: 0.75 }),
   ],
   COMPONENTS: stdComponents(6.10, 3.00, 2.60, { engineName: 'V-2-34 diesel', diesel: true, engineHp: 190, fuelPerTank: 200 }),
+  STATIONS: stdStations(6.10, 3.00, 2.60), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(6.10, 3.00, 2.60, 100),
   COMPARTMENTS: stdCompartments,
   L: { trunnionY: 1.93, trunnionZ: 0.30, barrelLength: 3.162, turretCentreZ: 0.20 },
@@ -159,6 +203,7 @@ export const T70M = {
     P('t70_turret_roof', 'turret roof', 10, [0, 1.82, 0], [0, 1, 0], 0.42, 0.42, { onTurret: true, ringZ: 0, behind: 'turret' }),
   ],
   COMPONENTS: stdComponents(4.29, 2.42, 2.04, { engineName: 'GAZ-203', engineHp: 110, fuelPerTank: 150 }),
+  STATIONS: stdStations(4.29, 2.42, 2.04), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(4.29, 2.42, 2.04, 90),
   COMPARTMENTS: stdCompartments,
   L: { trunnionY: 1.55, trunnionZ: 0.2, barrelLength: 2.07, turretCentreZ: 0 },
@@ -193,6 +238,7 @@ export const KV1S = {
     P('kv_turret_roof', 'turret roof', 30, [0, 2.42, 0.10], [0, 1, 0], 0.72, 0.72, { onTurret: true, ringZ: 0.10, behind: 'turret' }),
   ],
   COMPONENTS: stdComponents(6.80, 3.25, 2.64, { engineName: 'V-2K diesel', diesel: true, engineHp: 210, fuelPerTank: 200 }),
+  STATIONS: stdStations(6.80, 3.25, 2.64), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(6.80, 3.25, 2.64, 114),
   COMPARTMENTS: stdCompartments,
   L: { trunnionY: 2.03, trunnionZ: 0.25, barrelLength: 3.162, turretCentreZ: 0.10 },
@@ -224,6 +270,7 @@ export const SU122 = {
     P('su122_roof', 'casemate roof', 20, [0, 1.95, 0.9], [0, 1, 0], 1.30, 1.10, { behind: 'fighting_compartment' }),
   ],
   COMPONENTS: stdComponents(6.10, 3.00, 2.32, { engineName: 'V-2-34 diesel', diesel: true, engineHp: 190, fuelPerTank: 200 }),
+  STATIONS: stdStations(6.10, 3.00, 2.32), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(6.10, 3.00, 2.32, 40),
   COMPARTMENTS: stdCompartments,
   // Trunnion set so the muzzle lands at the published 6.95 m overall length.
@@ -257,6 +304,7 @@ export const SU152 = {
     P('su152_roof', 'casemate roof', 30, [0, 2.20, 1.0], [0, 1, 0], 1.45, 1.20, { behind: 'fighting_compartment' }),
   ],
   COMPONENTS: stdComponents(6.75, 3.25, 2.45, { engineName: 'V-2K diesel', diesel: true, engineHp: 210, fuelPerTank: 200 }),
+  STATIONS: stdStations(6.75, 3.25, 2.45), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(6.75, 3.25, 2.45, 20),
   COMPARTMENTS: stdCompartments,
   // Trunnion set so the muzzle lands at the published 8.95 m overall length.
@@ -287,6 +335,7 @@ export const SU76M = {
     P('su76_rear', 'rear', 15, [0, 0.90, -2.40], [0, 0, -1], 1.25, 0.45, { behind: 'hull' }),
   ],
   COMPONENTS: stdComponents(4.88, 2.73, 2.17, { engineName: 'GAZ-203', engineFront: true, engineHp: 100, fuelPerTank: 130 }),
+  STATIONS: stdStations(4.88, 2.73, 2.17, { engineFront: true }), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(4.88, 2.73, 2.17, 60),
   COMPARTMENTS: stdCompartments,
   // The SU-76M's fighting compartment is at the REAR, so the trunnion sits
@@ -314,6 +363,22 @@ export const ZIS3_ATG = {
     gunner_sight: { label: 'sight', compartment: 'hull', pos: [-0.3, 0.9, 0.4], size: [0.1, 0.1, 0.2], hp: 15, critical: 'optics' },
   },
   AMMO_RACKS: [{ id: 'ready', label: 'ready rounds', pos: [0.8, 0.3, -0.5], size: [0.6, 0.4, 0.8], capacity: 60 }],
+  // A gun crew stands at the piece with nothing but a 5 mm shield in front of
+  // them. High explosive is what kills them, and it kills them easily.
+  STATIONS: {
+    gunner: { label: 'Layer', role: 'gunner', onTurret: false, seat: [-0.45, 0.9, 0.2],
+      eye: [-0.45, 1.3, 0.2], exitTimeS: 1.0, vision: { fovDeg: 30, magnification: 3 } },
+    loader: { label: 'Loader', role: 'loader', onTurret: false, seat: [0.45, 0.9, 0.1],
+      eye: [0.45, 1.3, 0.1], exitTimeS: 1.0, vision: { fovDeg: 60, magnification: 1 } },
+    commander: { label: 'Gun commander', role: 'commander', onTurret: false, seat: [0.9, 0.9, -0.5],
+      eye: [0.9, 1.5, -0.5], eyeButtonedUp: [0.9, 1.5, -0.5], eyeHeadOut: [0.9, 1.5, -0.5],
+      exitTimeS: 1.0, vision: { fovDeg: 90, magnification: 1 } },
+    driver: { label: 'Ammunition number', role: 'driver', onTurret: false, seat: [1.2, 0.9, -1.0],
+      eye: [1.2, 1.4, -1.0], exitTimeS: 1.0, vision: { fovDeg: 90, magnification: 1 } },
+    radio: { label: 'Ammunition number', role: 'radio', onTurret: false, seat: [-1.2, 0.9, -1.0],
+      eye: [-1.2, 1.4, -1.0], exitTimeS: 1.0, vision: { fovDeg: 90, magnification: 1 } },
+  },
+  HATCHES: {},
   COMPARTMENTS: { hull: { label: 'gun position', min: [-1, 0, -1.5], max: [1, 1.5, 1.5] } },
   L: { trunnionY: 0.85, trunnionZ: 0.3, barrelLength: 3.4, turretCentreZ: 0 },
 };
@@ -370,6 +435,7 @@ export const PZ4_H = {
     P('pz4_turret_roof', 'turret roof', 16, [0, 2.40, 0.15], [0, 1, 0], 0.70, 0.70, { onTurret: true, ringZ: 0.15, behind: 'turret' }),
   ],
   COMPONENTS: stdComponents(5.92, 2.88, 2.68, { engineName: 'HL 120 TRM', engineHp: 160, fuelPerTank: 160 }),
+  STATIONS: stdStations(5.92, 2.88, 2.68), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(5.92, 2.88, 2.68, 87),
   COMPARTMENTS: stdCompartments,
   L: { trunnionY: 2.05, trunnionZ: 0.35, barrelLength: 3.6, turretCentreZ: 0.15 },
@@ -402,6 +468,7 @@ export const PZ3_M = {
     P('pz3_roof', 'roof', 12, [0, 1.50, 0.8], [0, 1, 0], 1.40, 1.50, { behind: 'hull' }),
   ],
   COMPONENTS: stdComponents(5.56, 2.95, 2.50, { engineName: 'HL 120 TRM', engineHp: 150, fuelPerTank: 110 }),
+  STATIONS: stdStations(5.56, 2.95, 2.50), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(5.56, 2.95, 2.50, 84),
   COMPARTMENTS: stdCompartments,
   L: { trunnionY: 1.95, trunnionZ: 0.30, barrelLength: 3.0, turretCentreZ: 0.10 },
@@ -432,6 +499,7 @@ export const STUG3_G = {
     P('stug_roof', 'roof', 16, [0, 1.75, 0.9], [0, 1, 0], 1.40, 1.20, { behind: 'fighting_compartment' }),
   ],
   COMPONENTS: stdComponents(5.56, 2.95, 2.16, { engineName: 'HL 120 TRM', engineHp: 150, fuelPerTank: 110 }),
+  STATIONS: stdStations(5.56, 2.95, 2.16), HATCHES: stdHatches,
   AMMO_RACKS: stdRacks(5.56, 2.95, 2.16, 54),
   COMPARTMENTS: stdCompartments,
   // Trunnion set so the muzzle lands at the published 6.85 m overall length.
@@ -467,6 +535,7 @@ export const FAMO = {
     fuel_l: { label: 'fuel tank', compartment: 'hull', pos: [-0.9, 0.9, -3.0], size: [0.5, 0.5, 0.8], hp: 30, critical: 'fuel', fireRisk: 0.8, capacityL: 290 },
   },
   AMMO_RACKS: [],
+  STATIONS: stdStations(8.32, 2.60, 2.76), HATCHES: stdHatches,
   COMPARTMENTS: { hull: { label: 'hull', min: [-1.3, 0.4, -4.2], max: [1.3, 2.0, 4.2] } },
   L: { trunnionY: 1.0, trunnionZ: 0, barrelLength: 0, turretCentreZ: 0 },
 };
@@ -496,6 +565,7 @@ export const SDKFZ251 = {
     track_r: { label: 'right track', external: true, pos: [0.9, 0.4, -1.2], size: [0.3, 0.7, 2.4], hp: 35, critical: 'mobility_half' },
   },
   AMMO_RACKS: [],
+  STATIONS: stdStations(5.80, 2.10, 1.75), HATCHES: stdHatches,
   COMPARTMENTS: { hull: { label: 'hull', min: [-1.05, 0.3, -2.9], max: [1.05, 1.6, 2.9] } },
   L: { trunnionY: 1.0, trunnionZ: 0, barrelLength: 0, turretCentreZ: 0 },
 };
@@ -521,6 +591,7 @@ export const OPEL_BLITZ = {
     engine: { label: 'engine', compartment: 'hull', pos: [0, 0.8, 2.2], size: [0.7, 0.6, 1.0], hp: 30, critical: 'mobility', fireRisk: 0.6, fuelAdjacent: true },
   },
   AMMO_RACKS: [],
+  STATIONS: stdStations(6.02, 2.27, 2.18), HATCHES: stdHatches,
   COMPARTMENTS: { hull: { label: 'hull', min: [-1.1, 0.2, -3.0], max: [1.1, 2.2, 3.0] } },
   L: { trunnionY: 1.0, trunnionZ: 0, barrelLength: 0, turretCentreZ: 0 },
 };
