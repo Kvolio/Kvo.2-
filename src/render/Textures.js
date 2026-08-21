@@ -1,0 +1,598 @@
+// ===========================================================================
+//  PROCEDURAL PBR TEXTURE AUTHORING
+//
+//  There are no image files in this project. Every material is authored here at
+//  load time onto a canvas and uploaded as a texture, which is what lets the
+//  game stay a build-free static site that loads instantly on a phone and works
+//  offline — and still have painted steel that reads as painted steel, cast
+//  armour that reads as a casting, and rubber that does not look like metal.
+//
+//  Each material returns a set: albedo, normal, roughness and (where it helps)
+//  ambient occlusion. Normals are derived from a height field with a Sobel
+//  operator, so a weld bead or a cast pebble has real relief under the light
+//  rather than a painted-on line.
+//
+//  Everything is cached and shared. Generating a 512² set costs a few
+//  milliseconds; generating it twice costs twice that for no gain.
+// ===========================================================================
+
+import * as THREE from 'three';
+
+// --------------------------------------------------------------------------
+//  Noise
+// --------------------------------------------------------------------------
+
+/** Deterministic hash noise — the same texture every run, on every device. */
+function hash2(x, y, seed) {
+  let h = x * 374761393 + y * 668265263 + seed * 1274126177;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+}
+
+function smooth(t) { return t * t * (3 - 2 * t); }
+
+function valueNoise(x, y, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = smooth(xf), v = smooth(yf);
+  const a = hash2(xi, yi, seed);
+  const b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+/** Fractal noise. `tile` makes the result seamless at that period. */
+function fbm(x, y, seed, octaves = 4, lacunarity = 2, gain = 0.5, tile = 0) {
+  let amp = 1, freq = 1, sum = 0, norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    let sx = x * freq, sy = y * freq;
+    if (tile) { sx = ((sx % (tile * freq)) + tile * freq) % (tile * freq); sy = ((sy % (tile * freq)) + tile * freq) % (tile * freq); }
+    sum += valueNoise(sx, sy, seed + i * 101) * amp;
+    norm += amp;
+    amp *= gain;
+    freq *= lacunarity;
+  }
+  return sum / norm;
+}
+
+/** Ridged noise — good for scratches, grain and worn edges. */
+function ridged(x, y, seed, octaves = 4) {
+  let amp = 1, freq = 1, sum = 0, norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    const n = Math.abs(valueNoise(x * freq, y * freq, seed + i * 57) * 2 - 1);
+    sum += (1 - n) * amp;
+    norm += amp;
+    amp *= 0.5; freq *= 2;
+  }
+  return sum / norm;
+}
+
+/** Voronoi cell distance — the basis for cast-steel pebbling and gravel. */
+function voronoi(x, y, seed, cells = 8) {
+  const gx = Math.floor(x * cells), gy = Math.floor(y * cells);
+  let best = 1e9, second = 1e9;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const cx = gx + dx, cy = gy + dy;
+      const px = (cx + hash2(cx, cy, seed)) / cells;
+      const py = (cy + hash2(cx, cy, seed + 7919)) / cells;
+      const d = (px - x) * (px - x) + (py - y) * (py - y);
+      if (d < best) { second = best; best = d; } else if (d < second) second = d;
+    }
+  }
+  return { d1: Math.sqrt(best), d2: Math.sqrt(second), edge: Math.sqrt(second) - Math.sqrt(best) };
+}
+
+// --------------------------------------------------------------------------
+//  Canvas plumbing
+// --------------------------------------------------------------------------
+
+const _cache = new Map();
+let RES = 512;
+
+export function setTextureResolution(px) {
+  if (px === RES) return;
+  RES = px;
+  disposeTextures();
+}
+
+/**
+ * Is there anywhere to draw? There is not, under `node --test`, and there might
+ * not be in a hardened browser either. Everything below degrades to flat
+ * colours rather than throwing, so the geometry stays testable headlessly and a
+ * browser without canvas still gets a playable — if untextured — game.
+ */
+export function canAuthorTextures() {
+  return typeof OffscreenCanvas !== 'undefined'
+    || (typeof document !== 'undefined' && typeof document.createElement === 'function');
+}
+
+function makeCanvas(size) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(size, size);
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  return c;
+}
+
+/**
+ * Fill a canvas from a per-pixel function.
+ * @param {number} size
+ * @param {(x:number,y:number,u:number,v:number)=>[number,number,number]} fn
+ *        returns 0..1 RGB
+ */
+function generate(size, fn) {
+  if (!canAuthorTextures()) return null;
+  const canvas = makeCanvas(size);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const img = ctx.createImageData(size, size);
+  const d = img.data;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const [r, g, b] = fn(x, y, x / size, y / size);
+      d[i] = Math.max(0, Math.min(255, r * 255));
+      d[i + 1] = Math.max(0, Math.min(255, g * 255));
+      d[i + 2] = Math.max(0, Math.min(255, b * 255));
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+/** Height field -> tangent-space normal map, via a Sobel operator. */
+function normalFromHeight(size, heightFn, strength = 2.2) {
+  if (!canAuthorTextures()) return null;
+  const h = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) h[y * size + x] = heightFn(x, y, x / size, y / size);
+  }
+  const at = (x, y) => h[((y + size) % size) * size + ((x + size) % size)];
+  return generate(size, (x, y) => {
+    const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1))
+             - (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
+    const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1))
+             - (at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1));
+    let nx = -dx * strength, ny = -dy * strength, nz = 1;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    return [nx * 0.5 + 0.5, ny * 0.5 + 0.5, nz * 0.5 + 0.5];
+  });
+}
+
+function toTexture(canvas, { srgb = false, repeat = 1, aniso = 8 } = {}) {
+  if (!canvas) return null;
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeat, repeat);
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.anisotropy = aniso;
+  t.needsUpdate = true;
+  return t;
+}
+
+function cached(key, build) {
+  const k = `${key}@${RES}`;
+  if (!_cache.has(k)) _cache.set(k, build(RES));
+  return _cache.get(k);
+}
+
+export function disposeTextures() {
+  for (const set of _cache.values()) {
+    for (const v of Object.values(set)) v?.dispose?.();
+  }
+  _cache.clear();
+}
+
+// --------------------------------------------------------------------------
+//  Material sets
+// --------------------------------------------------------------------------
+
+/**
+ * Dunkelgelb RAL 7028 over rolled armour plate.
+ * Rolled steel has a faint directional grain; the paint was sprayed thin in the
+ * field over a red-oxide primer, so it chips to a rust-brown rather than to
+ * bare metal, and it wears first on edges and around hatches.
+ */
+export function paintedSteel(opts = {}) {
+  const tint = opts.tint || [0.66, 0.58, 0.39];   // Dunkelgelb, linear-ish
+  const wear = opts.wear ?? 0.5;
+  const key = `painted:${tint.join(',')}:${wear}`;
+  return cached(key, (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      // Rolling grain along the plate.
+      const grain = fbm(u * 34, v * 6, 11, 3) * 0.06;
+      // Broad paint mottle from spray application.
+      const mottle = fbm(u * 5, v * 5, 23, 4) * 0.13 - 0.06;
+      // Chipping: sparse, sharp, revealing primer.
+      const chipField = ridged(u * 26, v * 26, 41, 3);
+      const chip = chipField > (1 - 0.13 * wear) ? 1 : 0;
+      // Fine scratches.
+      const scratch = ridged(u * 90, v * 12, 67, 2) > 0.93 ? 0.12 : 0;
+      // Dust film, heavier low down (v is used as a proxy for height on a plate).
+      const dust = fbm(u * 8, v * 8, 89, 3) * 0.10 * (0.4 + v * 0.8);
+
+      let r = tint[0] + grain + mottle - scratch;
+      let g = tint[1] + grain + mottle - scratch;
+      let b = tint[2] + grain + mottle * 0.7 - scratch;
+      if (chip) { r = 0.30; g = 0.16; b = 0.10; }            // red-oxide primer
+      // Dust is a pale warm grey laid over the top.
+      r = r * (1 - dust) + 0.62 * dust;
+      g = g * (1 - dust) + 0.57 * dust;
+      b = b * (1 - dust) + 0.46 * dust;
+      return [r, g, b];
+    });
+
+    const normal = normalFromHeight(size, (x, y, u, v) => {
+      const grain = fbm(u * 34, v * 6, 11, 3) * 0.35;
+      const chip = ridged(u * 26, v * 26, 41, 3) > (1 - 0.13 * wear) ? 0.5 : 0;
+      const tooth = fbm(u * 120, v * 120, 5, 2) * 0.12;
+      return grain + chip + tooth;
+    }, 1.6);
+
+    const rough = generate(size, (x, y, u, v) => {
+      // Paint is matt; chips and worn edges are rougher still; dust is rougher.
+      const base = 0.74 + fbm(u * 9, v * 9, 31, 3) * 0.12;
+      const chip = ridged(u * 26, v * 26, 41, 3) > (1 - 0.13 * wear) ? 0.14 : 0;
+      const dust = fbm(u * 8, v * 8, 89, 3) * 0.10;
+      const r = Math.min(0.98, base + chip + dust);
+      return [r, r, r];
+    });
+
+    return {
+      map: toTexture(albedo, { srgb: true }),
+      normalMap: toTexture(normal),
+      roughnessMap: toTexture(rough),
+    };
+  });
+}
+
+/**
+ * Cast steel — the gun mantlet and the commander's cupola. A casting has a
+ * pebbled surface from the sand mould that no rolled plate has, and it is the
+ * clearest way to tell the two apart on a real Tiger.
+ */
+export function castSteel(opts = {}) {
+  const tint = opts.tint || [0.62, 0.55, 0.37];
+  return cached(`cast:${tint.join(',')}`, (size) => {
+    const pebble = (u, v) => {
+      const a = voronoi(u, v, 13, 22).d1;
+      const b = voronoi(u, v, 71, 46).d1;
+      return a * 0.6 + b * 0.4;
+    };
+    const albedo = generate(size, (x, y, u, v) => {
+      const p = pebble(u, v);
+      const mottle = fbm(u * 6, v * 6, 3, 4) * 0.10 - 0.05;
+      const shade = 0.92 + p * 0.28;
+      return [tint[0] * shade + mottle, tint[1] * shade + mottle, tint[2] * shade + mottle * 0.8];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => pebble(u, v) * 0.9 + fbm(u * 60, v * 60, 9, 2) * 0.1, 2.6);
+    const rough = generate(size, (x, y, u, v) => {
+      const r = 0.80 + pebble(u, v) * 0.14;
+      return [r, r, r];
+    });
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Bare machined metal — breech, gun tube interior, tools, track pins. */
+export function machinedMetal(opts = {}) {
+  const tint = opts.tint || [0.42, 0.42, 0.44];
+  return cached(`machined:${tint.join(',')}`, (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const grain = ridged(u * 180, v * 3, 17, 2) * 0.10;
+      const dirt = fbm(u * 7, v * 7, 53, 4) * 0.14;
+      return [tint[0] + grain - dirt * 0.5, tint[1] + grain - dirt * 0.5, tint[2] + grain - dirt * 0.45];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) =>
+      ridged(u * 180, v * 3, 17, 2) * 0.5 + fbm(u * 90, v * 90, 29, 2) * 0.1, 1.1);
+    const rough = generate(size, (x, y, u, v) => {
+      const r = 0.34 + fbm(u * 12, v * 12, 61, 3) * 0.22 + ridged(u * 180, v * 3, 17, 2) * 0.10;
+      return [r, r, r];
+    });
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Track steel — polished bright where it runs on the wheels, muddy elsewhere. */
+export function trackSteel() {
+  return cached('track', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const wearBand = Math.exp(-((v - 0.5) ** 2) / 0.02);     // bright centre band
+      const rust = fbm(u * 10, v * 10, 77, 4);
+      const mud = fbm(u * 5, v * 5, 91, 3) * 0.6;
+      let r = 0.30 + wearBand * 0.30 + rust * 0.12;
+      let g = 0.29 + wearBand * 0.30 + rust * 0.07;
+      let b = 0.28 + wearBand * 0.31 + rust * 0.03;
+      r = r * (1 - mud * 0.55) + 0.26 * mud * 0.55;
+      g = g * (1 - mud * 0.55) + 0.19 * mud * 0.55;
+      b = b * (1 - mud * 0.55) + 0.12 * mud * 0.55;
+      return [r, g, b];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) =>
+      fbm(u * 40, v * 40, 43, 3) * 0.6 + voronoi(u, v, 19, 14).d1 * 0.4, 2.0);
+    const rough = generate(size, (x, y, u, v) => {
+      const wearBand = Math.exp(-((v - 0.5) ** 2) / 0.02);
+      const r = 0.78 - wearBand * 0.42 + fbm(u * 8, v * 8, 13, 3) * 0.14;
+      return [r, r, r];
+    });
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Road-wheel rubber — matt, fine-grained, dusty. */
+export function rubber() {
+  return cached('rubber', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const g = fbm(u * 70, v * 70, 101, 3) * 0.05;
+      const dust = fbm(u * 6, v * 6, 103, 3) * 0.16;
+      const base = 0.055 + g;
+      return [base + dust * 0.45, base + dust * 0.40, base + dust * 0.32];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => fbm(u * 110, v * 110, 101, 3), 0.9);
+    const rough = generate(size, () => [0.94, 0.94, 0.94]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Canvas — tarpaulins, belt bags, seat pads. Woven, so it needs a weave. */
+export function canvasCloth(opts = {}) {
+  const tint = opts.tint || [0.47, 0.44, 0.32];
+  return cached(`canvas:${tint.join(',')}`, (size) => {
+    const weave = (u, v) => {
+      const w = Math.sin(u * Math.PI * 2 * 70) * Math.cos(v * Math.PI * 2 * 70);
+      return w * 0.5 + 0.5;
+    };
+    const albedo = generate(size, (x, y, u, v) => {
+      const w = weave(u, v) * 0.10 - 0.05;
+      const stain = fbm(u * 4, v * 4, 131, 4) * 0.16;
+      return [tint[0] + w - stain * 0.5, tint[1] + w - stain * 0.5, tint[2] + w - stain * 0.4];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => weave(u, v) * 0.7 + fbm(u * 20, v * 20, 133, 2) * 0.3, 1.5);
+    const rough = generate(size, () => [0.93, 0.93, 0.93]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Panzer black wool — the crew's Sonderbekleidung. */
+export function woolCloth(opts = {}) {
+  const tint = opts.tint || [0.045, 0.045, 0.052];
+  return cached(`wool:${tint.join(',')}`, (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const fibre = fbm(u * 90, v * 90, 151, 3) * 0.05;
+      const fade = fbm(u * 3, v * 3, 157, 3) * 0.04;
+      return [tint[0] + fibre + fade, tint[1] + fibre + fade, tint[2] + fibre + fade];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) =>
+      fbm(u * 80, v * 80, 151, 3) * 0.6 + fbm(u * 14, v * 14, 159, 2) * 0.4, 1.2);
+    const rough = generate(size, () => [0.96, 0.96, 0.96]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Timber — izba log walls, tool handles, jack blocks. */
+export function wood(opts = {}) {
+  const tint = opts.tint || [0.26, 0.18, 0.10];
+  return cached(`wood:${tint.join(',')}`, (size) => {
+    const rings = (u, v) => {
+      const warp = fbm(u * 4, v * 4, 173, 3) * 0.3;
+      return (Math.sin((v * 26 + warp * 6) * Math.PI) * 0.5 + 0.5);
+    };
+    const albedo = generate(size, (x, y, u, v) => {
+      const r = rings(u, v) * 0.22 - 0.08;
+      const grain = ridged(u * 8, v * 120, 179, 2) * 0.10;
+      return [tint[0] + r + grain, tint[1] + r * 0.8 + grain * 0.8, tint[2] + r * 0.6 + grain * 0.6];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => rings(u, v) * 0.5 + ridged(u * 8, v * 120, 179, 2) * 0.5, 1.4);
+    const rough = generate(size, (x, y, u, v) => {
+      const r = 0.86 + rings(u, v) * 0.08;
+      return [r, r, r];
+    });
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Dry Kursk black earth, the ground the whole battle was fought on. */
+export function dryEarth() {
+  return cached('earth', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const clod = voronoi(u, v, 29, 12);
+      const fine = fbm(u * 30, v * 30, 191, 4);
+      const dark = fbm(u * 4, v * 4, 193, 3);
+      // Kursk black earth is dark soil, but a sunlit field of it is not black.
+      // This is the albedo the sun multiplies, so it has to sit where a real
+      // dry ploughed field sits — around a third, not a fifth.
+      const base = 0.34 + fine * 0.12 + clod.d1 * 0.16 - dark * 0.08;
+      return [base * 1.12, base * 0.96, base * 0.72];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) =>
+      voronoi(u, v, 29, 12).d1 * 0.55 + fbm(u * 40, v * 40, 191, 4) * 0.45, 2.4);
+    const rough = generate(size, () => [0.97, 0.97, 0.97]);
+    return { map: toTexture(albedo, { srgb: true, repeat: 1 }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Standing rye — the crop the salient was covered in that July. */
+export function ryeField() {
+  return cached('rye', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const stalks = ridged(u * 150, v * 18, 211, 2);
+      const patch = fbm(u * 5, v * 5, 213, 4);
+      const base = 0.40 + stalks * 0.16 + patch * 0.12;
+      return [base * 1.20, base * 1.05, base * 0.55];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => ridged(u * 150, v * 18, 211, 2), 1.3);
+    const rough = generate(size, () => [0.95, 0.95, 0.95]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+export function grassField() {
+  return cached('grass', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const blades = ridged(u * 130, v * 130, 223, 2);
+      const patch = fbm(u * 6, v * 6, 227, 4);
+      const base = 0.16 + blades * 0.10 + patch * 0.10;
+      return [base * 0.85, base * 1.35, base * 0.55];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => ridged(u * 130, v * 130, 223, 2), 1.2);
+    const rough = generate(size, () => [0.95, 0.95, 0.95]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+export function mudGround() {
+  return cached('mud', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const ruts = ridged(u * 4, v * 40, 233, 3);
+      const wet = fbm(u * 7, v * 7, 239, 4);
+      const base = 0.10 + ruts * 0.07 + wet * 0.05;
+      return [base * 1.10, base * 0.92, base * 0.70];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) =>
+      ridged(u * 4, v * 40, 233, 3) * 0.7 + fbm(u * 30, v * 30, 239, 3) * 0.3, 2.8);
+    const rough = generate(size, (x, y, u, v) => {
+      const r = 0.55 + fbm(u * 7, v * 7, 239, 4) * 0.30;   // wet patches shine
+      return [r, r, r];
+    });
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** A dirt road, rutted by tracks. */
+export function dirtTrack() {
+  return cached('dirtroad', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const rut = Math.exp(-((u - 0.30) ** 2) / 0.004) + Math.exp(-((u - 0.70) ** 2) / 0.004);
+      const dust = fbm(u * 20, v * 20, 251, 4);
+      const base = 0.26 + dust * 0.10 - rut * 0.07;
+      return [base * 1.18, base * 1.02, base * 0.76];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => {
+      const rut = Math.exp(-((u - 0.30) ** 2) / 0.004) + Math.exp(-((u - 0.70) ** 2) / 0.004);
+      return fbm(u * 40, v * 40, 251, 3) * 0.6 - rut * 0.4;
+    }, 2.0);
+    const rough = generate(size, () => [0.96, 0.96, 0.96]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Thatched or plank roofing for the izbas. */
+export function thatch() {
+  return cached('thatch', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const straw = ridged(u * 20, v * 160, 263, 2);
+      const rot = fbm(u * 5, v * 5, 269, 4);
+      const base = 0.20 + straw * 0.14 - rot * 0.07;
+      return [base * 1.25, base * 1.05, base * 0.62];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => ridged(u * 20, v * 160, 263, 2), 2.0);
+    const rough = generate(size, () => [0.97, 0.97, 0.97]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/** Soviet green — 4BO, the colour every Soviet vehicle at Kursk was painted. */
+export function sovietGreen(opts = {}) {
+  return paintedSteel({ tint: opts.tint || [0.16, 0.20, 0.11], wear: opts.wear ?? 0.6 });
+}
+
+/** German field grey, for the infantry and the workshop people. */
+export function fieldGrey() {
+  return woolCloth({ tint: [0.16, 0.18, 0.15] });
+}
+
+/** Human skin. Kept simple — this is not a character-art project. */
+export function skin() {
+  return cached('skin', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      const pore = fbm(u * 100, v * 100, 271, 3) * 0.04;
+      const flush = fbm(u * 6, v * 6, 277, 3) * 0.06;
+      return [0.48 + pore + flush, 0.30 + pore + flush * 0.6, 0.22 + pore + flush * 0.4];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) => fbm(u * 120, v * 120, 271, 3), 0.6);
+    const rough = generate(size, () => [0.72, 0.72, 0.72]);
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
+/**
+ * A 1024-wide strip of sky used to build the environment map. A gradient from
+ * horizon haze to zenith blue with a sun disc, so PBR materials have something
+ * real to reflect. Without an environment map, metal in three.js looks like
+ * painted plastic.
+ */
+export function skyGradient(topColor, horizonColor, groundColor, sunElevation, sunColor) {
+  if (!canAuthorTextures()) return null;
+  const size = 256;
+  const canvas = makeCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, size);
+  g.addColorStop(0, topColor);
+  g.addColorStop(0.46, horizonColor);
+  g.addColorStop(0.52, horizonColor);
+  g.addColorStop(1, groundColor);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  // A soft sun disc at the right elevation, so reflections have a highlight.
+  const sy = size * (0.5 - Math.sin(sunElevation) * 0.5);
+  const sun = ctx.createRadialGradient(size * 0.5, sy, 0, size * 0.5, sy, size * 0.16);
+  sun.addColorStop(0, sunColor);
+  sun.addColorStop(0.25, sunColor);
+  sun.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, size, size);
+
+  const t = new THREE.CanvasTexture(canvas);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Cache statistics, for the performance overlay. */
+export function textureStats() {
+  return { sets: _cache.size, resolution: RES };
+}
+
+// --------------------------------------------------------------------------
+//  Warm-up
+// --------------------------------------------------------------------------
+
+/** Every material set, by name, so the warm-up knows what there is to build. */
+export const MATERIAL_SETS = {
+  paintedSteel, castSteel, machinedMetal, trackSteel, rubber,
+  canvasCloth, woolCloth, wood, dryEarth, ryeField, grassField,
+  mudGround, dirtTrack, thatch, sovietGreen, fieldGrey, skin,
+};
+
+/** Texture resolution per quality preset. */
+export const TEXTURE_RESOLUTION = {
+  low: 128, medium: 256, high: 512, ultra: 512, cinematic: 1024,
+};
+
+/**
+ * Build the material sets ahead of time, yielding to the browser between each
+ * so the page stays responsive and the loading bar actually moves. A 512px set
+ * costs a few hundred milliseconds to author; doing seventeen of them in one
+ * synchronous block would freeze the tab for five seconds.
+ *
+ * @param {(done:number,total:number,name:string)=>void} onProgress
+ */
+export async function warmup(onProgress) {
+  if (!canAuthorTextures()) return 0;
+  const names = Object.keys(MATERIAL_SETS);
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    MATERIAL_SETS[name]();
+    onProgress?.(i + 1, names.length, name);
+    // Yield so the browser can paint. requestAnimationFrame keeps it to one
+    // set per frame, which is the smoothest way to do this on a phone.
+    await new Promise((r) => (typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame(() => r())
+      : setTimeout(r, 0)));
+  }
+  return _cache.size;
+}

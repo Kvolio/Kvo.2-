@@ -14,6 +14,14 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
 
+// This test exercises the GAME, not the GPU. SwiftShader is a software
+// rasteriser, so ambient occlusion and 512px procedural textures would make it
+// crawl and tell us nothing about correctness. Pin it to the Low preset; the
+// gallery tool renders at full quality for the visual critics instead.
+await page.addInitScript(() => {
+  try { localStorage.setItem('tiger101.quality', 'low'); } catch { /* private mode */ }
+});
+
 page.on('console', (m) => {
   const t = m.text();
   logs.push(`[${m.type()}] ${t}`);

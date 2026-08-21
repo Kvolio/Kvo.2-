@@ -41,8 +41,32 @@ function boot() {
     else if (!game.paused) audio.resume();
   });
 
-  loading.style.display = 'none';
-  game.start();
+  // Author the material textures before the first frame. A 512px PBR set costs
+  // a few hundred milliseconds to generate, and there are seventeen of them, so
+  // this yields between each and drives the loading bar rather than freezing
+  // the tab for several seconds.
+  const bar = loading.querySelector('.boot-bar i');
+  const note = loading.querySelector('.boot-note');
+  const originalNote = note?.textContent || '';
+  if (bar) bar.style.animation = 'none';
+
+  game.renderer.warmupTextures((done, total, name) => {
+    if (bar) {
+      bar.style.width = `${Math.round((done / total) * 100)}%`;
+      bar.style.transform = 'none';
+    }
+    if (note) note.textContent = `Preparing materials — ${name} (${done}/${total})`;
+  }).then(() => {
+    if (note) note.textContent = originalNote;
+    loading.style.display = 'none';
+    game.start();
+  }).catch((err) => {
+    // A texture failure must not stop the game starting; the materials will
+    // simply be untextured.
+    console.error('texture warm-up failed', err);
+    loading.style.display = 'none';
+    game.start();
+  });
 }
 
 if (document.readyState === 'loading') {
