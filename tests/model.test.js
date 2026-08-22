@@ -127,3 +127,49 @@ test('each side carries the twenty-four road wheels a rubber-tyred Tiger has', (
     assert.equal(n, 24, `${side} side has ${n} road wheels, and a Tiger I has 24 per side`);
   }
 });
+
+test('the track lies on the running gear and no link passes through a wheel', () => {
+  // The loop used to be four disconnected arcs with a gap of about a metre at
+  // each end, and the arc-length sampler cut straight across them — so links
+  // flew diagonally out below and inboard of the wheels, and others passed
+  // straight through the drive sprocket. Nothing in the suite noticed.
+  const t = buildTiger({ lod: 0 });
+  t.updateMatrixWorld(true);
+
+  const gear = t.userData.gear.right;
+  const wheelR = L.roadWheelDia / 2;
+  const wheels = gear.userData.wheels.map(
+    (w) => new THREE.Vector3().setFromMatrixPosition(w.matrixWorld));
+
+  const links = t.userData.tracks.right.userData.links;
+  const m = new THREE.Matrix4();
+  const p = new THREE.Vector3();
+  let lowest = Infinity, highest = -Infinity, inside = 0;
+  const centres = [];
+  for (let i = 0; i < links.count; i++) {
+    links.getMatrixAt(i, m);
+    p.setFromMatrixPosition(m);
+    links.localToWorld(p);
+    centres.push(p.clone());
+    lowest = Math.min(lowest, p.y);
+    highest = Math.max(highest, p.y);
+    for (const w of wheels) {
+      // Compared in the plane the track runs in; the wheels are spread across
+      // the hull but the track passes outboard of all of them.
+      if (Math.hypot(p.y - w.y, p.z - w.z) < wheelR - 0.035) inside++;
+    }
+  }
+
+  assert.equal(inside, 0, `${inside} track links pass inside a road wheel`);
+  assert.ok(lowest < 0.06, `the track must reach the ground; lowest link at ${lowest.toFixed(3)} m`);
+  assert.ok(highest < 1.45, `the track must not climb over the hull; highest link at ${highest.toFixed(3)} m`);
+
+  // And the loop must be continuous: a gap between consecutive links means the
+  // path has a hole in it that the sampler is interpolating across.
+  let maxGap = 0;
+  for (let i = 0; i < centres.length; i++) {
+    const a = centres[i], b = centres[(i + 1) % centres.length];
+    maxGap = Math.max(maxGap, a.distanceTo(b));
+  }
+  assert.ok(maxGap < 0.30, `track has a ${maxGap.toFixed(3)} m gap between consecutive links`);
+});

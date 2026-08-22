@@ -294,40 +294,97 @@ function buildRunningGear(side, lod) {
     }
   }
 
-  // Torsion-bar swing arms, visible between the wheels on the inner rank.
+  // TORSION-BAR SUSPENSION. Eight stations per side, each a bearing boss on the
+  // hull side, a trailing swing arm, and the stub axle the wheels ride on.
+  // Without them the wheels hang in space against a blank slab, which is what
+  // stops the running gear reading as machinery rather than as decoration.
   if (lod < 2) {
+    const bossX = sx * (L.hullHalfWL + 0.03);
     for (let i = 0; i < stations; i++) {
       const z = first - i * spacing;
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.13, 0.30), M.hullDetail());
-      arm.position.set(sx * 1.02, axleY + 0.04, z + 0.14);
-      arm.rotation.x = -0.25;
+      // The bearing boss where the torsion bar arm passes through the hull.
+      const boss = cyl(0.105, 0.115, 0.10, lod === 0 ? 14 : 8, M.hullDetail(),
+        bossX, axleY + 0.16, z + 0.24);
+      boss.rotation.z = Math.PI / 2;
+      g.add(boss);
+      // The arm itself, trailing forward and down to the axle line. A tapered
+      // section, because a swing arm is a forging and not a plank.
+      const armLen = Math.hypot(0.24, 0.16);
+      const arm = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.075, armLen, lod === 0 ? 10 : 6), M.hullDetail());
+      arm.position.set(sx * (L.hullHalfWL + 0.06), axleY + 0.08, z + 0.12);
+      arm.rotation.set(Math.atan2(0.24, 0.16), 0, 0);
       arm.castShadow = true;
       g.add(arm);
+      // The stub axle the innermost wheel rank turns on.
+      const stub = cyl(0.048, 0.048, 0.16, lod === 0 ? 10 : 6, M.steel(),
+        sx * (L.hullHalfWL + 0.06), axleY, z);
+      stub.rotation.z = Math.PI / 2;
+      g.add(stub);
     }
   }
 
-  // Drive sprocket, front. Toothed ring, drives the track.
+  // DRIVE SPROCKET. Twin toothed rings on a hub, with the track's guide horns
+  // running in the gap between them and a tooth standing in every link gap.
+  // Built as a hub with a cross of bars and two arc plates it had no teeth at
+  // all, nothing engaged anything, and the links passed straight through it.
   const sprocketR = L.sprocketDia / 2;
   const sprocket = new THREE.Group();
-  const hub = cyl(sprocketR * 0.42, sprocketR * 0.42, 0.20, lod === 0 ? 18 : 10, M.steel());
+
+  // Final drive housing: the bolted circular casing on the hull side that the
+  // sprocket turns on. It is a large, prominent feature on every photograph and
+  // it was entirely absent.
+  const housing = cyl(0.27, 0.29, 0.16, lod === 0 ? 20 : 10, M.hullDetail(), -sx * 0.16, 0, 0);
+  housing.rotation.z = Math.PI / 2;
+  sprocket.add(housing);
+  if (lod === 0) {
+    const hb = 12;
+    const hbGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.022, 6);
+    const hbMesh = new THREE.InstancedMesh(hbGeo, M.steel(), hb);
+    const hd = new THREE.Object3D();
+    for (let i = 0; i < hb; i++) {
+      const a = (i / hb) * Math.PI * 2;
+      hd.position.set(-sx * 0.245, Math.sin(a) * 0.225, Math.cos(a) * 0.225);
+      hd.rotation.set(0, 0, Math.PI / 2);
+      hd.updateMatrix();
+      hbMesh.setMatrixAt(i, hd.matrix);
+    }
+    hbMesh.instanceMatrix.needsUpdate = true;
+    sprocket.add(hbMesh);
+  }
+
+  // Hub, and the two tooth rings either side of the guide-horn gap.
+  const hub = cyl(0.17, 0.17, 0.24, lod === 0 ? 18 : 10, M.steel());
   hub.rotation.z = Math.PI / 2;
   sprocket.add(hub);
-  // The two toothed rings a Tiger sprocket actually has, with the track running
-  // between them.
-  if (lod < 2) {
-    const teeth = lod === 0 ? 18 : 10;
-    for (const ringX of [-0.09, 0.09]) {
-      const ring = cyl(sprocketR * 0.68, sprocketR * 0.68, 0.035, lod === 0 ? 20 : 12, M.steel());
-      ring.rotation.z = Math.PI / 2;
-      ring.position.x = ringX;
-      sprocket.add(ring);
+
+  // One tooth per link, so the pitch of the teeth is the pitch of the track.
+  const wrapR = sprocketR + TRACK_THICKNESS / 2;
+  const teeth = lod === 0 ? Math.round((2 * Math.PI * wrapR) / 0.135) : 11;
+  const rootR = sprocketR * 0.80;
+  for (const ringX of [-0.085, 0.085]) {
+    const ring = cyl(rootR, rootR, 0.030, lod === 0 ? 24 : 12, M.steel());
+    ring.rotation.z = Math.PI / 2;
+    ring.position.x = ringX;
+    sprocket.add(ring);
+    if (lod < 2) {
+      // Teeth as tapered blocks standing off the ring, tip just short of the
+      // link centreline so each one sits in a link gap rather than through it.
+      const tipR = sprocketR - TRACK_THICKNESS * 0.35;
+      const tGeo = new THREE.CylinderGeometry(0.022, 0.040, tipR - rootR + 0.02, 4);
+      const tMesh = new THREE.InstancedMesh(tGeo, M.steel(), teeth);
+      const td = new THREE.Object3D();
+      const rMid = (rootR + tipR) / 2;
       for (let i = 0; i < teeth; i++) {
         const a = (i / teeth) * Math.PI * 2;
-        const t = box(0.05, 0.13, 0.08, M.steel(),
-          ringX, Math.sin(a) * sprocketR * 0.84, Math.cos(a) * sprocketR * 0.84);
-        t.rotation.x = -a;
-        sprocket.add(t);
+        td.position.set(ringX, Math.sin(a) * rMid, Math.cos(a) * rMid);
+        td.rotation.set(-a, 0, 0);
+        td.updateMatrix();
+        tMesh.setMatrixAt(i, td.matrix);
       }
+      tMesh.instanceMatrix.needsUpdate = true;
+      tMesh.castShadow = true;
+      sprocket.add(tMesh);
     }
   }
   sprocket.position.set(sx * 1.30, SPROCKET_Y, L.hullHalfL - 0.42);
@@ -373,7 +430,7 @@ function buildTrackLink(pitch, lod) {
   // and still finish flush with it: the published width over tracks is the
   // OVERALL figure, pin heads included, and the tank measured 3.737 m the
   // moment they were allowed outside it.
-  add(new THREE.BoxGeometry(W * 0.955, TRACK_THICKNESS * 0.62, pitch * 0.80), 0, 0, 0);
+  add(new THREE.BoxGeometry(W * 0.955, TRACK_THICKNESS * 0.78, pitch * 0.84), 0, 0, 0);
 
   // The grouser bar across the ground face — the thing that bites.
   add(new THREE.BoxGeometry(W * 0.92, TRACK_THICKNESS * 0.34, pitch * 0.30),
@@ -383,8 +440,11 @@ function buildTrackLink(pitch, lod) {
     const seg = lod === 0 ? 8 : 5;
     // Pin bosses at the leading edge, the knuckles that interleave with the
     // next link. Their axis runs across the track, on the pin's own line.
+    // Kept small against the plate. Built at 0.30 of the track thickness with a
+    // thin plate behind them, they were the biggest thing on the link and the
+    // whole run read as a chain of sausages rather than a chain of castings.
     for (const bx of [-0.26, 0, 0.26]) {
-      const b = new THREE.CylinderGeometry(TRACK_THICKNESS * 0.30, TRACK_THICKNESS * 0.30, W * 0.20, seg);
+      const b = new THREE.CylinderGeometry(TRACK_THICKNESS * 0.21, TRACK_THICKNESS * 0.21, W * 0.20, seg);
       b.rotateZ(Math.PI / 2);
       b.translate(bx * W, 0, pitch * 0.42);
       parts.push(b);
@@ -392,7 +452,7 @@ function buildTrackLink(pitch, lod) {
     // Pin ends, proud of the outer edge. These are what give the track its
     // scalloped silhouette in every photograph of a Tiger.
     for (const sxx of [-1, 1]) {
-      const e = new THREE.CylinderGeometry(TRACK_THICKNESS * 0.34, TRACK_THICKNESS * 0.30, 0.018, seg);
+      const e = new THREE.CylinderGeometry(TRACK_THICKNESS * 0.26, TRACK_THICKNESS * 0.22, 0.018, seg);
       e.rotateZ(Math.PI / 2);
       e.translate(sxx * (W / 2 - 0.009), 0, pitch * 0.42);
       parts.push(e);
@@ -405,52 +465,103 @@ function buildTrackLink(pitch, lod) {
 }
 
 /**
- * The 725 mm Kgs 63/725/130 combat track, 96 links per side.
+ * THE TRACK LOOP.
  *
- * Built as a genuine CLOSED LOOP, sampled at even arc length so every link is
- * the same distance from its neighbours and every one of them sits on the path.
- * The previous version wrapped the sprocket and idler at radii that did not
- * meet the straight runs, so a dozen links flew off into the air in front of
- * the hull — the single most obviously broken thing on the vehicle.
+ * A Tiger has no return rollers: the upper run lies ON THE ROAD WHEEL TOPS, the
+ * lower run lies flat on the ground under them, and the two are joined by
+ * straight runs that are TANGENT to the drive sprocket and the idler. Get any
+ * of those tangents wrong and the track leaves the wheels — which is exactly
+ * what it was doing. The loop was built as four disconnected pieces with a gap
+ * of about a metre at each end, and the arc-length sampler cut straight across
+ * them, so links flew diagonally out below and inboard of the running gear.
+ *
+ * Everything below is constructed rather than eyeballed: given a point the
+ * track must pass through, the tangent point on a wheel is solved for, and the
+ * wrap arc runs between consecutive tangent points. Nothing floats.
  */
 function trackPath() {
   const wheelR = L.roadWheelDia / 2;
   const axleY = wheelR + TRACK_THICKNESS;
-  const sprocketR = L.sprocketDia / 2 + TRACK_THICKNESS;
-  const idlerR = 0.34 + TRACK_THICKNESS;
+  const half = TRACK_THICKNESS / 2;
+
+  // Radii to the LINK CENTRELINE, which is what the sampler places links on.
+  const sprocketR = L.sprocketDia / 2 + half;
+  const idlerR = 0.34 + half;
   const frontZ = L.hullHalfL - 0.42;
   const rearZ = -(L.hullHalfL - 0.34);
-  const groundY = TRACK_THICKNESS / 2;
-  const topY = axleY + wheelR + TRACK_THICKNESS;
+
+  const groundY = half;                       // links resting on the ground
+  const topY = axleY + wheelR + half;         // links resting on the wheel tops
   const contactFront = L.trackContact / 2;
   const contactRear = -L.trackContact / 2;
+  const wheelFrontZ = 1.60;                   // where the top run first lands
+  const wheelRearZ = -1.60;
+
+  /**
+   * The point at which a line drawn from P touches a circle.
+   * `side` picks which of the two tangents: +1 the one reached by turning
+   * anticlockwise from P->centre, -1 the other.
+   */
+  const tangent = (pz, py, cz, cy, r, side) => {
+    const dz = cz - pz, dy = cy - py;
+    const d = Math.hypot(dz, dy);
+    if (d <= r) return { z: cz, y: cy };      // degenerate; should not happen
+    const base = Math.atan2(dy, dz);
+    // The angle at P between the line to the centre and the tangent is
+    // asin(r/d), not acos. With acos the "tangent point" came out a metre off
+    // the circle and the top run peaked high above the sprocket.
+    const off = Math.asin(r / d);
+    const a = base + side * off;
+    const len = Math.sqrt(d * d - r * r);
+    return { z: pz + Math.cos(a) * len, y: py + Math.sin(a) * len };
+  };
+
+  const angleOn = (t, cz, cy) => Math.atan2(t.z - cz, t.y - cy);
+
+  // Where the track meets each wheel.
+  const spFront = tangent(contactFront, groundY, frontZ, SPROCKET_Y, sprocketR, -1);
+  const spRear = tangent(wheelFrontZ, topY, frontZ, SPROCKET_Y, sprocketR, 1);
+  const idRear = tangent(contactRear, groundY, rearZ, IDLER_Y, idlerR, 1);
+  const idFront = tangent(wheelRearZ, topY, rearZ, IDLER_Y, idlerR, -1);
 
   const pts = [];
+  const push = (z, y) => {
+    const last = pts[pts.length - 1];
+    if (last && Math.hypot(z - last.z, y - last.y) < 1e-6) return;
+    pts.push({ z, y });
+  };
   const arc = (cz, cy, r, a0, a1, steps) => {
+    // Angles measured as atan2(z - cz, y - cy), so 0 is straight up.
+    let d = a1 - a0;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
     for (let i = 0; i <= steps; i++) {
-      const a = a0 + (a1 - a0) * (i / steps);
-      pts.push({ z: cz + Math.sin(a) * r, y: cy + Math.cos(a) * r });
+      const a = a0 + d * (i / steps);
+      push(cz + Math.sin(a) * r, cy + Math.cos(a) * r);
+    }
+  };
+  const line = (a, b, steps) => {
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      push(a.z + (b.z - a.z) * t, a.y + (b.y - a.y) * t);
     }
   };
 
-  // Over the top of the drive sprocket, from its front tangent to its top.
-  arc(frontZ, SPROCKET_Y, sprocketR, Math.PI / 2, 0, 8);
-  // Top run, back over the road wheels, sagging between the return points.
-  const topSteps = 16;
-  for (let i = 1; i <= topSteps; i++) {
-    const t = i / topSteps;
-    pts.push({ z: frontZ + (rearZ - frontZ) * t, y: topY - Math.sin(t * Math.PI * 4) * 0.022 });
-  }
-  // Over the idler and down its back face.
-  arc(rearZ, IDLER_Y, idlerR, 0, -Math.PI, 8);
-  // Along the ground, forward.
-  const botSteps = 18;
-  for (let i = 1; i <= botSteps; i++) {
-    const t = i / botSteps;
-    pts.push({ z: contactRear + (contactFront - contactRear) * t, y: groundY });
-  }
-  // Up the front face of the sprocket, closing the loop.
-  arc(frontZ, SPROCKET_Y, sprocketR, Math.PI, Math.PI / 2, 8);
+  // Ground contact, rear to front.
+  push(contactRear, groundY);
+  line({ z: contactRear, y: groundY }, { z: contactFront, y: groundY }, 16);
+  // Up onto the sprocket and around the front of it.
+  line({ z: contactFront, y: groundY }, spFront, 3);
+  arc(frontZ, SPROCKET_Y, sprocketR,
+    angleOn(spFront, frontZ, SPROCKET_Y), angleOn(spRear, frontZ, SPROCKET_Y), 12);
+  // Down onto the road wheel tops, back along them, and up onto the idler.
+  line(spRear, { z: wheelFrontZ, y: topY }, 3);
+  line({ z: wheelFrontZ, y: topY }, { z: wheelRearZ, y: topY }, 14);
+  line({ z: wheelRearZ, y: topY }, idFront, 3);
+  arc(rearZ, IDLER_Y, idlerR,
+    angleOn(idFront, rearZ, IDLER_Y), angleOn(idRear, rearZ, IDLER_Y), 12);
+  // Back down to the ground, closing the loop.
+  line(idRear, { z: contactRear, y: groundY }, 3);
 
   const segments = [];
   let length = 0;
