@@ -1,21 +1,133 @@
 {
   "metresPerPixel": 0.005,
   "views": {
-    "top": {
-      "view": "top",
+    "front": {
+      "view": "front",
       "width": 900,
-      "height": 1920,
+      "height": 800,
       "metresPerPixel": 0.005,
       "worldWidth": 4.5,
-      "worldHeight": 9.6,
+      "worldHeight": 4,
       "frustumCentre": [
         0,
-        0,
+        1.75,
         0
       ],
       "originPx": [
         450,
-        959.9999999999993
+        750
+      ],
+      "screenRight": [
+        1,
+        0,
+        0
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
+    "rear": {
+      "view": "rear",
+      "width": 900,
+      "height": 800,
+      "metresPerPixel": 0.005,
+      "worldWidth": 4.5,
+      "worldHeight": 4,
+      "frustumCentre": [
+        0,
+        1.75,
+        0
+      ],
+      "originPx": [
+        450,
+        750
+      ],
+      "screenRight": [
+        -1,
+        0,
+        0
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
+    "left": {
+      "view": "left",
+      "width": 2080,
+      "height": 800,
+      "metresPerPixel": 0.005,
+      "worldWidth": 10.4,
+      "worldHeight": 4,
+      "frustumCentre": [
+        0,
+        1.75,
+        0.9
+      ],
+      "originPx": [
+        1219.9999999999993,
+        750
+      ],
+      "screenRight": [
+        0,
+        0,
+        -1
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
+    "right": {
+      "view": "right",
+      "width": 2080,
+      "height": 800,
+      "metresPerPixel": 0.005,
+      "worldWidth": 10.4,
+      "worldHeight": 4,
+      "frustumCentre": [
+        0,
+        1.75,
+        0.9
+      ],
+      "originPx": [
+        860.0000000000007,
+        750
+      ],
+      "screenRight": [
+        0,
+        0,
+        1
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
+    "top": {
+      "view": "top",
+      "width": 900,
+      "height": 2080,
+      "metresPerPixel": 0.005,
+      "worldWidth": 4.5,
+      "worldHeight": 10.4,
+      "frustumCentre": [
+        0,
+        0,
+        0.9
+      ],
+      "originPx": [
+        450,
+        1219.9999999999993
       ],
       "screenRight": [
         -1,
@@ -27,12 +139,12 @@
         0,
         1
       ],
-      "groundLinePx": 959.9999999999993
+      "groundLinePx": 1219.9999999999993
     }
   },
   "measurements": {
-    "triangles": 223690,
-    "meshes": 601,
+    "triangles": 224090,
+    "meshes": 608,
     "overall": {
       "min": [
         -1.8525,
@@ -107,18 +219,18 @@
       },
       "gun": {
         "min": [
-          -0.1232,
-          2.008,
+          -0.1184,
+          2.002,
           1.67
         ],
         "max": [
-          0.1232,
-          2.232,
+          0.1184,
+          2.238,
           5.292
         ],
         "size": [
-          0.2463,
-          0.224,
+          0.2367,
+          0.236,
           3.622
         ],
         "centre": [

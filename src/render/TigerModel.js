@@ -685,7 +685,9 @@ function buildEngineDeck(lod) {
         // a 0.10 chord at 28 degrees, so they overlap enough to keep a grenade
         // out and still leave 17 mm of darkness visible between them.
         for (let i = 0; i < 7; i++) {
-          const lv = box(W - 0.03, 0.022, 0.10, M.steel(), cx, deckY + RIM - 0.012,
+          // Painted, like the rest of the deck. In bare metal they read as
+          // bright aluminium slats.
+          const lv = box(W - 0.03, 0.022, 0.10, M.hullDetail(), cx, deckY + RIM - 0.012,
             z - 0.315 + i * 0.105);
           lv.rotation.x = 28 * DEG;
           g.add(lv);
@@ -701,18 +703,20 @@ function buildEngineDeck(lod) {
   if (lod < 2) {
     // Air intake cowls on the centre line.
     for (const z of [-1.35, -2.85]) {
-      g.add(box(0.42, 0.10, 0.34, M.steel(), 0, deckY + 0.05, z));
+      // Painted armour, not bare machined metal. As M.steel() these read as a
+      // white untextured blob sitting on the deck.
+      g.add(box(0.42, 0.10, 0.34, M.hullDetail(), 0, deckY + 0.05, z));
     }
     // Tools on the deck: shovel, crowbar, axe, wire cutters, fire extinguisher.
     g.add(box(0.06, 0.05, 0.95, M.wood(), -1.62, deckY + 0.04, -1.10));      // shovel handle
     g.add(box(0.16, 0.03, 0.22, M.steel(), -1.62, deckY + 0.04, -1.66));     // shovel blade
-    g.add(box(0.05, 0.05, 1.15, M.steel(), 1.62, deckY + 0.04, -1.30));      // crowbar
+    g.add(box(0.05, 0.05, 1.15, M.darkSteel(), 1.62, deckY + 0.04, -1.30));  // crowbar
     g.add(box(0.07, 0.06, 0.62, M.wood(), 1.48, deckY + 0.04, -2.40));       // axe
-    const ext = cyl(0.05, 0.05, 0.34, 10, M.steel(), -1.45, deckY + 0.06, -2.55);
+    const ext = cyl(0.05, 0.05, 0.34, 10, M.darkSteel(), -1.45, deckY + 0.06, -2.55);
     ext.rotation.x = Math.PI / 2;
     g.add(ext);                                                              // hand extinguisher
     // The 20-tonne jack and its wooden block, stowed ACROSS the rear plate.
-    g.add(box(0.62, 0.16, 0.16, M.steel(), 0.62, 1.30, -3.22));
+    g.add(box(0.62, 0.16, 0.16, M.darkSteel(), 0.62, 1.30, -3.22));
     g.add(box(0.26, 0.20, 0.24, M.wood(), -0.86, 1.30, -3.22));
   }
 
@@ -1004,27 +1008,31 @@ function buildTurret(lod) {
   collar.rotation.x = Math.PI / 2;
   brake.add(collar);
 
-  // Two baffle chambers separated by a web, with the ports cut out of the sides.
+  // The brake BODY. It was built as a pair of thin top and bottom slabs with
+  // open sides, which from any distance reads as two bars and a gap — the
+  // muzzle brake, the signature of the 8.8 cm KwK 36, effectively disappeared
+  // and a critic reported the gun as having none at all. It is a solid body
+  // now, with the blast ports cut into its sides as recesses, which reads
+  // correctly from every angle.
+  const bodyLen = BRAKE_LEN - 0.075;
+  const body = cyl(0.108, 0.112, bodyLen, seg, M.gunSteel(), 0, 0, bz + 0.055 + bodyLen / 2);
+  body.rotation.x = Math.PI / 2;
+  brake.add(body);
+
   const chamberLen = (BRAKE_LEN - 0.075) / 2;
   for (let c = 0; c < 2; c++) {
-    const z0 = bz + 0.055 + c * (chamberLen + 0.015);
-    // The chamber walls: top and bottom slabs joined by the baffle web, so the
-    // sides are genuinely open rather than being a decal on a cylinder.
-    for (const dy of [1, -1]) {
-      brake.add(box(0.215, 0.032, chamberLen, M.gunSteel(), 0, dy * 0.083, z0 + chamberLen / 2));
-    }
-    // The baffle plate itself, with the bore through it.
-    const baffle = new THREE.Mesh(
-      new THREE.RingGeometry(0.048, 0.107, seg), M.gunSteel());
-    baffle.position.set(0, 0, z0 + chamberLen);
-    brake.add(baffle);
-    if (lod === 0) {
-      // The port cheeks, angled back the way the gases actually leave.
-      for (const sx of [-1, 1]) {
-        const cheek = box(0.026, 0.17, chamberLen * 0.8, M.gunSteel(),
-          sx * 0.104, 0, z0 + chamberLen * 0.45);
-        cheek.rotation.y = sx * 0.14;
-        brake.add(cheek);
+    const z0 = bz + 0.055 + c * (chamberLen + 0.008);
+    // The dividing web between the two chambers, standing proud.
+    const web = cyl(0.118, 0.118, 0.020, seg, M.gunSteel(), 0, 0, z0 + chamberLen - 0.01);
+    web.rotation.x = Math.PI / 2;
+    brake.add(web);
+    if (lod < 2) {
+      // The blast ports, angled back the way the gases actually leave.
+      for (const sxx of [-1, 1]) {
+        const port = box(0.030, 0.115, chamberLen * 0.62, M.darkSteel(),
+          sxx * 0.098, 0, z0 + chamberLen * 0.42);
+        port.rotation.y = sxx * 0.16;
+        brake.add(port);
       }
     }
   }
@@ -1299,11 +1307,21 @@ function buildHullSides(lod) {
     // sponson sides with the eyes at each end, not coiled into a hoop.
     for (const sx of [-1, 1]) {
       const x = sx * (L.hullHalfWU + 0.035);
-      // The straight run, with a slight sag between its clips.
-      for (let i = 0; i < 3; i++) {
-        const z = 1.35 - i * 1.35;
-        const run = cyl(0.018, 0.018, 1.30, lod === 0 ? 8 : 5, M.darkSteel(), x, 1.06 - (i === 1 ? 0.015 : 0), z);
-        run.rotation.x = Math.PI / 2;
+      // ONE continuous run. Built as three separate cylinders with gaps between
+      // them it read as a string of beads laid along the sponson rather than as
+      // a cable. The sag is put in by splitting it into segments that share
+      // their ends, so the run is unbroken.
+      const SEGS = lod === 0 ? 8 : 4;
+      const z0 = 2.02, z1 = -2.02;
+      for (let i = 0; i < SEGS; i++) {
+        const ta = i / SEGS, tb = (i + 1) / SEGS;
+        const sag = (t) => 1.06 - Math.sin(t * Math.PI) * 0.022;
+        const za = z0 + (z1 - z0) * ta, zb = z0 + (z1 - z0) * tb;
+        const ya = sag(ta), yb = sag(tb);
+        const len = Math.hypot(zb - za, yb - ya);
+        const run = cyl(0.018, 0.018, len, lod === 0 ? 8 : 5, M.darkSteel(),
+          x, (ya + yb) / 2, (za + zb) / 2);
+        run.rotation.x = Math.PI / 2 - Math.atan2(yb - ya, zb - za);
         g.add(run);
       }
       // Cable eyes, spliced at both ends.
