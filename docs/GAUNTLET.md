@@ -143,3 +143,69 @@ The rye field renders as opaque pastel quads filling the horizon
 named absolute failure condition and a one-material fix, but §61 is explicit
 that the battlefield is not built around a bad Tiger. It stays logged here until
 the vehicles pass.
+
+## Round 2, critic 1 of 4 — 3D art critic, with the reference pack
+
+Given the nine reference images, the five orthographic views, the distance
+ladder and the arm's-length crops. No description from me of what was built.
+Three other critics — historical accuracy, proportion and silhouette — were
+launched with the same pack and all three terminated on a session limit before
+reporting. They are re-run next.
+
+**Verdict: every category returned findings. Eight CRITICAL.** Ranked as the
+critic ranked them, with my verification status against the current build.
+
+### CRITICAL
+
+| # | Finding | Verified |
+|---|---|---|
+| 1 | Drive sprocket has no teeth and the track does not engage it — no twin tooth rings, no final-drive housing, no hub bolt circle; links pass *through* the spoke bars | **confirmed** |
+| 2 | Track reads as a chain of capsules; guide horns not legible; wrap sections and ground run look like two different tracks | **partly** — horns are modelled and the link was rebuilt mid-round; the wrap still reads wrong |
+| 3 | Track does not touch the running gear or the ground: top run floats above the wheel tops, bottom run passes below and inboard of them, no tangent wrap at the idler | **confirmed** |
+| 4 | Road wheel tyres are separate rings intersecting the wheels | **stale** — the ortho views predate the wheel rebuild; steel and rubber are now one lathed profile, concentric. The lens shapes between wheels are the interleave itself, which is correct for a Schachtellaufwerk, but it reads badly and that is a real finding |
+| 5 | Mantlet is a horizontal capsule with no bolted face, no trunnion covers, no coax port, no elevation gap | **partly** — profile and apertures exist; it still reads as a capsule and protrudes too far |
+| 6 | The 8.8 cm KwK 36 has no muzzle brake | **disputed** — a double-baffle brake is modelled. It is too small and too undifferentiated to read, which is the real defect |
+| 7 | Turret is a box with a cylinder stuck on the front, not a continuous horseshoe; hard unchamfered crease where curve meets slab | **confirmed** |
+| 8 | Suspension does not exist — no swing arms, no axle stubs, no hull-side bosses; wheels hang against a blank slab | **confirmed** |
+
+### MAJOR
+
+9. Three distinguishable materials where the colour reference shows nine or ten;
+   the blacks have no lighting response and read as holes.
+10. No surface storytelling — uniform value roof to belly, no edge chipping, no
+    dirt gradient, no streaking, no mud in the running gear.
+11. The albedo reads as wood grain, and the grain direction changes between
+    adjoining plates, so the UV shells are unrelated.
+12. Hull sides are metres of empty slab; the references carry fenders, hook
+    stowage, tow cables with eyes and clamps, jack and block, tools, extinguisher,
+    escape hatch and spare track links on that exact surface.
+13. Turret sides and roof equally empty; loader's hatch is *scribed*, not modelled.
+14. Hull crew hatches are decals, not geometry.
+15. Stray geometry: an untextured white blob on the engine deck, a floating tow
+    eye, a tow cable made of spheres, a bracket ending in mid-air, loose plates
+    on the ground.
+16. Fittings intersect rather than join — exhausts, Feifel, smoke dischargers,
+    headlight, bow MG, driver's visor.
+17. Every edge is a knife edge; no bevels anywhere, so nothing takes an edge
+    highlight.
+18. Legibility fails at range: at 100 m the vehicle is the same value as the
+    terrain; at 20 m it reads as a generic pale boxy tank.
+
+### MINOR
+
+19. Faceting at working distances. 20. Smoothing errors across machined rims.
+21. Inconsistent texel density. 22. **The turret number is applied to every face
+of the turret box, so it appears twice on the rear plate.** 23. Fenders too
+narrow — the plan view shows them covering the track completely. 24. Turret too
+narrow relative to the hull. 25. Deck grilles have no depth.
+
+### The critic's order, which I am following
+
+1. **The running gear as one job** — 1, 2, 3, 4, 8. The largest concentration of
+   failure, and fixing it also restores the dark running-gear mass that makes a
+   tank read at 100 m.
+2. **Turret and gun** — 5, 6, 7. Without these the silhouette is not a Tiger
+   beyond 20 m, and no texture work rescues that.
+3. **Materials and surface** — 9, 10, 11, 17.
+
+Stowage and fittings (12, 13, 16) and the stray geometry sweep (15) follow.
