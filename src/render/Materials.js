@@ -266,8 +266,13 @@ export function applyAnisotropy(max) {
 export function applyEnvironment(envMap, intensity = 1) {
   for (const [key, m] of cache.entries()) {
     if (!(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) continue;
-    m.envMap = envMap;
-    m.envMapIntensity = interiorKeys.has(key) ? intensity * 0.07 : intensity;
+    // Deliberately NOT setting m.envMap. A material-level envMap overrides
+    // scene.environment entirely, which takes the scene's own intensity control
+    // out of the loop — the environment then dominated every surface, flattened
+    // the directional lighting and washed out every shadow on the vehicle.
+    // Leaving it null lets scene.environment apply, and envMapIntensity here
+    // scales it per material.
+    m.envMapIntensity = interiorKeys.has(key) ? 0.07 : 1;
     m.needsUpdate = true;
   }
 }

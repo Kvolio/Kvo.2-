@@ -266,17 +266,17 @@ export class Renderer {
     this.scene.fog.density = t.fogDensity * w.fogMul * this.q.fogQuality;
 
     const el = Math.max(4, t.sunAngle) * Math.PI / 180;
-    const az = 0.7;
+    const az = t.sunAzimuth ?? 2.1;
     this.sunDirection.set(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)).normalize();
     this.sun.color.set(t.sun);
 
     // The light budget has to be shared with the environment map, which now
     // supplies most of the ambient term. Stacking the old flat-light values on
     // top of IBL blew every bright surface straight through the tone mapper.
-    this.sun.intensity = 3.0 * t.lightFactor * (1 - w.cloud * 0.5);
-    this.hemi.intensity = 0.30 + t.ambient * (0.35 + w.cloud * 0.5);
+    this.sun.intensity = 4.2 * t.lightFactor * (1 - w.cloud * 0.55);
+    this.hemi.intensity = 0.22 + t.ambient * (0.28 + w.cloud * 0.6);
     this.hemi.color.copy(sky);
-    this.ambient.intensity = 0.10 + w.cloud * 0.12;
+    this.ambient.intensity = 0.06 + w.cloud * 0.14;
     this.ambient.color.copy(sky);
 
     if (timeOfDay === 'night') {
@@ -314,7 +314,11 @@ export class Renderer {
     this.envRT?.dispose();
     this.envRT = this.pmrem.fromEquirectangular(tex);
     this.scene.environment = this.envRT.texture;
-    this.scene.environmentIntensity = 0.85 * (0.45 + t.lightFactor * 0.6);
+    // The environment supplies the ambient term. Kept low enough that the SUN
+    // is unmistakably the key light — otherwise the tank is lit evenly from
+    // every direction, its shaded side is as bright as its sunlit side, and it
+    // casts no readable shadow.
+    this.scene.environmentIntensity = 0.34 * (0.5 + t.lightFactor * 0.6);
     applyEnvironment(this.envRT.texture, this.scene.environmentIntensity);
 
     // Use the same authored sky as the visible background. A flat clear colour

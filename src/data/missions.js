@@ -372,11 +372,18 @@ export function getMission(index) {
   return MISSIONS[Math.min(index, MISSIONS.length - 1)];
 }
 
+/**
+ * `sunAngle` is the sun's elevation in degrees, `sunAzimuth` the direction it
+ * comes from in radians. The azimuth is chosen so the light RAKES across a
+ * vehicle rather than shining down the camera's own axis: a tank lit from
+ * behind the viewer has no visible shadow and no separation between its plates,
+ * which is what made the Tiger read as one flat beige lump.
+ */
 export const TIME_OF_DAY = {
-  morning:   { sunAngle: 22, lightFactor: 0.92, ambient: 0.42, fogDensity: 0.00018, sky: '#a8b8c8', sun: '#ffe8c0' },
-  afternoon: { sunAngle: 62, lightFactor: 1.00, ambient: 0.55, fogDensity: 0.00012, sky: '#8fb0d0', sun: '#fff4e0' },
-  evening:   { sunAngle: 8,  lightFactor: 0.62, ambient: 0.30, fogDensity: 0.00030, sky: '#c08858', sun: '#ff9850' },
-  night:     { sunAngle: -20, lightFactor: 0.10, ambient: 0.08, fogDensity: 0.00045, sky: '#0a1020', sun: '#405070' },
+  morning:   { sunAngle: 34, sunAzimuth: 2.1, lightFactor: 0.92, ambient: 0.42, fogDensity: 0.00018, sky: '#a8b8c8', sun: '#ffe8c0' },
+  afternoon: { sunAngle: 55, sunAzimuth: 1.5, lightFactor: 1.00, ambient: 0.55, fogDensity: 0.00012, sky: '#8fb0d0', sun: '#fff4e0' },
+  evening:   { sunAngle: 14, sunAzimuth: 2.6, lightFactor: 0.62, ambient: 0.30, fogDensity: 0.00030, sky: '#c08858', sun: '#ff9850' },
+  night:     { sunAngle: 26, sunAzimuth: 2.3, lightFactor: 0.10, ambient: 0.08, fogDensity: 0.00045, sky: '#0a1020', sun: '#405070' },
 };
 
 export const WEATHER = {

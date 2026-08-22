@@ -613,9 +613,25 @@ function buildTurret(lod) {
   }
   // The 100 mm front plate.
   g.add(box(1.86, h, 0.10, M.turret(), 0, midY, 1.24));
-  // Roof.
-  const roof = box(1.86, 0.045, 2.05, M.turret(), 0, roofY, 0.22);
+  // Roof, inset so it sits INSIDE the walls rather than overhanging them like
+  // a lid — a Tiger's roof plate is let into the turret shell, not laid on top.
+  const roof = new THREE.Mesh(
+    new THREE.CylinderGeometry(outerR - 0.05, outerR - 0.05, 0.045, lod === 0 ? 24 : 12,
+      1, false, Math.PI * 0.32, Math.PI * 1.36),
+    M.turret());
+  roof.position.set(0, roofY - 0.01, 0.06);
+  roof.castShadow = true; roof.receiveShadow = true;
   g.add(roof);
+  g.add(box(1.78, 0.045, 1.22, M.turret(), 0, roofY - 0.01, 0.62));
+  if (lod < 2) {
+    // The weld line where the roof is let into the shell.
+    const rw = weld([-0.90, roofY - 0.03, 1.20], [0.90, roofY - 0.03, 1.20], 0.022, lod);
+    if (rw) g.add(rw);
+    for (const sx of [-1, 1]) {
+      const sw = weld([sx * 0.90, roofY - 0.03, 1.20], [sx * 0.90, roofY - 0.03, -0.20], 0.022, lod);
+      if (sw) g.add(sw);
+    }
+  }
 
   // ---- Mantlet (Walzenblende) --------------------------------------------
   const mantlet = new THREE.Group();
@@ -821,13 +837,25 @@ function buildHullFront(lod) {
     slot.rotation.x = -9 * DEG;
     g.add(slot);
 
-    // Hull MG 34 in its Kugelblende 50 ball mount, front-right.
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.20, 12, 10), M.hullDark());
-    ball.position.set(0.63, 1.38, L.hullHalfL - 0.02);
+    // Hull MG 34 in its Kugelblende 50 ball mount, front-right. The ball is
+    // SEATED IN A COLLAR, not stuck on the plate: modelled as a bare sphere it
+    // read as a debug primitive half-sunk in the glacis.
+    const mgZ = L.hullHalfL - 0.06;
+    const collar = cyl(0.145, 0.165, 0.10, lod === 0 ? 16 : 8, M.cast(6), 0.63, 1.38, mgZ);
+    collar.rotation.x = Math.PI / 2 - 9 * DEG;
+    g.add(collar);
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(0.125, lod === 0 ? 14 : 8, lod === 0 ? 10 : 6), M.cast(8));
+    ball.position.set(0.63, 1.38, mgZ + 0.03);
     g.add(ball);
-    const mg = cyl(0.024, 0.024, 0.44, 8, M.darkSteel(), 0.63, 1.38, L.hullHalfL + 0.20);
+    // The barrel emerges from the ball's own axis, and wears a jacket.
+    const mgJacket = cyl(0.030, 0.030, 0.16, 8, M.gunSteel(), 0.63, 1.38, mgZ + 0.14);
+    mgJacket.rotation.x = Math.PI / 2;
+    g.add(mgJacket);
+    const mg = cyl(0.019, 0.019, 0.34, 8, M.gunSteel(), 0.63, 1.38, mgZ + 0.34);
     mg.rotation.x = Math.PI / 2;
     g.add(mg);
+    if (lod === 0) g.add(boltRow([0.46, 1.38, mgZ], [0.80, 1.38, mgZ], 2, 0.013, lod));
 
     // Bosch headlight on the glacis.
     const lamp = cyl(0.075, 0.075, 0.09, 12, M.darkSteel(), -1.10, 1.80, 2.48);
@@ -858,14 +886,46 @@ function buildHullRoof(lod) {
   }
 
   // Driver's and radio operator's hatches — pivot-and-slide, hinged outboard.
+  // They must read as HATCHES: a raised rim standing off the roof plate, a
+  // domed lid with a grab handle, a hinge arm and a ring of bolts. Drawn as
+  // flush discs they were invisible, and a tank with no way in reads as a prop.
   const hatches = {};
   for (const [name, sx] of [['driver_hatch', -1], ['radio_hatch', 1]]) {
+    const hx = sx * 1.16, hz = 2.42;
+    // The armoured rim, welded proud of the roof.
+    const rim = cyl(0.335, 0.345, 0.055, lod === 0 ? 20 : 10, M.hullDetail(), hx, y + 0.028, hz);
+    g.add(rim);
+    if (lod === 0) {
+      // The weld holding the rim to the roof, and its bolt ring.
+      const n = 14;
+      const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.016, 6);
+      const inst = new THREE.InstancedMesh(boltGeo, M.steel(), n);
+      const d = new THREE.Object3D();
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        d.position.set(hx + Math.sin(a) * 0.375, y + 0.03, hz + Math.cos(a) * 0.375);
+        d.updateMatrix();
+        inst.setMatrixAt(i, d.matrix);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      g.add(inst);
+    }
+
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 1.16, y + 0.02, 2.42);
-    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.045, lod === 0 ? 16 : 8), M.hull());
-    h.position.set(-sx * 0.30, 0.022, 0);
-    h.castShadow = true;
-    pivot.add(h);
+    pivot.position.set(hx, y + 0.055, hz);
+    // The lid: dished, with a raised centre boss and a grab handle.
+    const lid = cyl(0.31, 0.30, 0.05, lod === 0 ? 20 : 10, M.hull(), -sx * 0.30, 0.025, 0);
+    pivot.add(lid);
+    if (lod < 2) {
+      pivot.add(cyl(0.10, 0.10, 0.03, lod === 0 ? 12 : 6, M.hull(), -sx * 0.30, 0.062, 0));
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.012, 5, 10, Math.PI), M.steel());
+      handle.position.set(-sx * 0.30, 0.075, 0);
+      handle.rotation.set(Math.PI / 2, 0, 0);
+      pivot.add(handle);
+      // The pivot arm the hatch swings out on.
+      pivot.add(box(0.10, 0.05, 0.05, M.steel(), -sx * 0.10, 0.02, 0));
+    }
+    pivot.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     g.add(pivot);
     hatches[name] = pivot;
   }
@@ -898,26 +958,31 @@ function buildHullSides(lod) {
   }
 
   if (lod < 2) {
-    // Hinged fenders, sitting just clear of the top run of track and covering
-    // its full width — which is what stops a Tiger throwing mud over its own
-    // engine deck, and what hides the top run from the side.
-    const fenderY = L.roadWheelDia / 2 + TRACK_THICKNESS * 2 + L.roadWheelDia / 2 + 0.08;
+    // The mudguard: ONE continuous run per side sitting just clear of the top
+    // of the track, with a turned-down outer lip and brackets carrying it off
+    // the hull. Built as four separate floating plates it read as a row of
+    // detached paddles hanging off the side of the tank.
+    const fenderY = L.roadWheelDia + TRACK_THICKNESS * 2 + 0.06;
     for (const sx of [-1, 1]) {
-      for (let i = 0; i < 4; i++) {
-        const z = 2.36 - i * 1.56;
-        const f = box(0.73, 0.025, 1.50, M.hullDetail(), sx * 1.485, fenderY, z);
-        g.add(f);
-        // The turned-down outer lip, flush with the outer face of the track so
-        // the vehicle still measures 3.705 m over the tracks.
-        const lip = box(0.022, 0.10, 1.50, M.hullDetail(), sx * 1.842, fenderY - 0.05, z);
-        g.add(lip);
-        // Hinge knuckles where the fender folds up against the hull.
-        for (const hz of [-0.55, 0.55]) {
-          g.add(cyl(0.028, 0.028, 0.10, 6, M.steel(), sx * 1.12, fenderY + 0.01, z + hz)
-            .rotateZ(Math.PI / 2));
-        }
+      const run = box(0.70, 0.022, 5.55, M.hullDetail(), sx * 1.50, fenderY, 0.05);
+      g.add(run);
+      // The turned-down outer lip, flush with the outer face of the track.
+      g.add(box(0.020, 0.085, 5.55, M.hullDetail(), sx * 1.842, fenderY - 0.042, 0.05));
+      // Front and rear mudflap sections, hinged and angled down.
+      for (const [z, tilt] of [[2.98, 0.42], [-2.86, -0.42]]) {
+        const flap = box(0.70, 0.020, 0.62, M.hullDetail(), sx * 1.50, fenderY - 0.10, z);
+        flap.rotation.x = tilt;
+        g.add(flap);
+      }
+      // Support brackets off the hull side, which is what stops it reading as
+      // a plate floating in space.
+      for (let i = 0; i < 6; i++) {
+        const z = 2.45 - i * 0.98;
+        g.add(box(0.30, 0.045, 0.05, M.hullDetail(), sx * 1.62, fenderY - 0.035, z));
+        g.add(box(0.05, 0.16, 0.05, M.hullDetail(), sx * 1.755, fenderY - 0.10, z));
       }
     }
+
     // The two 30 mm tow cables. A Tiger carried them clipped flat along the
     // sponson sides with the eyes at each end, not coiled into a hoop.
     for (const sx of [-1, 1]) {
