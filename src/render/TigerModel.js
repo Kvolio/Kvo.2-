@@ -1306,14 +1306,26 @@ function buildHullFront(lod) {
     // centre lines — the obvious-looking numbers — they sit inside 100 mm of
     // armour and cannot be seen at all, which is the same mistake that had every
     // weld bead on this hull buried in the steel it was joining.
-    for (const [by, tilt] of [[1.12, -9], [0.86, 24]]) {
-      for (let i = 0; i < 6; i++) {
-        const lx = -1.35 + i * 0.54;
-        const link = box(0.50, 0.17, 0.09, M.track(), lx, by, 3.20);
-        link.rotation.x = tilt * DEG;
+    // THIRTEEN links to a row, not six. In the reference the spare track runs
+    // right across the nose as a dense band of individual links — it is the
+    // single most conspicuous thing about a Tiger's front aspect, and six
+    // widely-spaced blocks read as nothing at all against three and a half
+    // metres of plate.
+    // Rows sit BELOW the driver's visor and the machine gun ball. At 1.30 the
+    // upper row ran straight through the ball mount.
+    for (const [by, tilt, bz] of [[1.06, -9, 3.16], [0.74, 24, 3.20]]) {
+      for (let i = 0; i < 13; i++) {
+        const lx = -1.56 + i * 0.26;
+        // Hung by hand, so no two sit quite alike. Perfectly regular they read
+        // as a radiator grille rather than as salvaged track.
+        const j = Math.sin(i * 12.9898 + by * 78.233) * 0.5 + 0.5;
+        const link = box(0.245, 0.29 + j * 0.03, 0.085, M.track(),
+          lx, by + (j - 0.5) * 0.022, bz + (j - 0.5) * 0.012);
+        link.rotation.set(tilt * DEG, (j - 0.5) * 0.05, (j - 0.5) * 0.06);
         g.add(link);
       }
-      const bar = box(3.34, 0.05, 0.05, M.hullDetail(), 0, by - 0.11, 3.19);
+      // The bracket bar the row hangs from, above it.
+      const bar = box(3.40, 0.05, 0.06, M.hullDetail(), 0, by + 0.185, bz - 0.02);
       bar.rotation.x = tilt * DEG;
       g.add(bar);
     }
@@ -1349,9 +1361,13 @@ function buildHullFront(lod) {
     // ---- Weld beads on the front plate junctions --------------------------
     // Sitting on the outer faces, not inside the armour.
     const fw = (a, b) => { const w = weld(a, b, 0.026, lod); if (w) g.add(w); };
-    fw([-1.72, 1.775, 2.30], [1.72, 1.775, 2.30]);          // glacis to roof
-    fw([-1.74, 1.735, 2.90], [1.74, 1.735, 2.90]);          // glacis to driver's plate
-    fw([-1.74, 1.03, 3.115], [1.74, 1.03, 3.115]);          // driver's plate to nose
+    // The junctions are where the plate FACES meet, which for a plate tilted
+    // 24 degrees and 100 mm thick is nowhere near its centre line. Placed by
+    // eye at the centre lines, these beads sat inside the armour like every
+    // other weld on this hull did.
+    fw([-1.72, 1.760, 2.32], [1.72, 1.760, 2.32]);          // glacis to roof
+    fw([-1.74, 1.755, 2.90], [1.74, 1.755, 2.90]);          // glacis to driver's plate
+    fw([-1.74, 1.10, 3.235], [1.74, 1.10, 3.235]);          // driver's plate to nose
   }
   return g;
 }
@@ -1441,28 +1457,49 @@ function buildHullSides(lod) {
   }
 
   if (lod < 2) {
-    // The mudguard: ONE continuous run per side sitting just clear of the top
-    // of the track, with a turned-down outer lip and brackets carrying it off
-    // the hull. Built as four separate floating plates it read as a row of
-    // detached paddles hanging off the side of the tank.
+    // THE MUDGUARDS.
+    //
+    // They must cover the track and finish FLUSH with its outer edge. A critic
+    // read them as absent and asked for a plate overhanging the track — but the
+    // locked 3.705 m is the vehicle's overall width, and on combat tracks a
+    // Tiger is already at its rail-loading limit, so nothing projects beyond
+    // the track. Widened to reach 1.8515 against the track's 1.8525, which
+    // covers it fully without making the tank 3.84 m wide. The dimensional test
+    // caught the overhang immediately.
+    //
+    // The hinged front and rear sections pivot from the ends of the run itself,
+    // so they cannot float free of it — built as separate boxes at a guessed
+    // offset they hung in the air ahead of the bow.
     const fenderY = L.roadWheelDia + TRACK_THICKNESS * 2 + 0.06;
+    const RUN_Z0 = -2.72, RUN_Z1 = 2.83;
+    const RUN_LEN = RUN_Z1 - RUN_Z0;
     for (const sx of [-1, 1]) {
-      const run = box(0.70, 0.022, 5.55, M.hullDetail(), sx * 1.50, fenderY, 0.05);
+      const cx = sx * 1.4765;
+      const run = box(0.750, 0.024, RUN_LEN, M.hullDetail(), cx, fenderY, (RUN_Z0 + RUN_Z1) / 2);
       g.add(run);
-      // The turned-down outer lip, flush with the outer face of the track.
-      g.add(box(0.020, 0.085, 5.55, M.hullDetail(), sx * 1.842, fenderY - 0.042, 0.05));
-      // Front and rear mudflap sections, hinged and angled down.
-      for (const [z, tilt] of [[2.98, 0.42], [-2.86, -0.42]]) {
-        const flap = box(0.70, 0.020, 0.62, M.hullDetail(), sx * 1.50, fenderY - 0.10, z);
-        flap.rotation.x = tilt;
-        g.add(flap);
+      // The turned-down outer lip, standing outboard of the track.
+      g.add(box(0.022, 0.09, RUN_LEN, M.hullDetail(), sx * 1.840, fenderY - 0.045, (RUN_Z0 + RUN_Z1) / 2));
+      // Hinged sections, pivoting from the ends of the run.
+      for (const [hz, dir] of [[RUN_Z1, 1], [RUN_Z0, -1]]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(cx, fenderY, hz);
+        pivot.rotation.x = dir * 0.40;
+        const flap = box(0.750, 0.022, 0.58, M.hullDetail(), 0, 0, dir * 0.29);
+        pivot.add(flap);
+        pivot.add(box(0.022, 0.08, 0.58, M.hullDetail(), sx * 0.364, -0.04, dir * 0.29));
+        pivot.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        g.add(pivot);
+        // The hinge itself, so the joint is a joint and not a crease.
+        const hinge = cyl(0.022, 0.022, 0.72, lod === 0 ? 8 : 5, M.steel(), cx, fenderY - 0.008, hz);
+        hinge.rotation.z = Math.PI / 2;
+        g.add(hinge);
       }
-      // Support brackets off the hull side, which is what stops it reading as
-      // a plate floating in space.
-      for (let i = 0; i < 6; i++) {
-        const z = 2.45 - i * 0.98;
-        g.add(box(0.30, 0.045, 0.05, M.hullDetail(), sx * 1.62, fenderY - 0.035, z));
-        g.add(box(0.05, 0.16, 0.05, M.hullDetail(), sx * 1.755, fenderY - 0.10, z));
+      // Brackets carrying it off the hull side — what stops it reading as a
+      // plate floating in space.
+      for (let i = 0; i < 7; i++) {
+        const z = 2.55 - i * 0.88;
+        g.add(box(0.36, 0.05, 0.05, M.hullDetail(), sx * 1.60, fenderY - 0.038, z));
+        g.add(box(0.05, 0.20, 0.05, M.hullDetail(), sx * 1.765, fenderY - 0.12, z));
       }
     }
 

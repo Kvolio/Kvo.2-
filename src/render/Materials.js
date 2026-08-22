@@ -304,7 +304,13 @@ export function applyEnvironment(envMap, intensity = 1) {
     // the directional lighting and washed out every shadow on the vehicle.
     // Leaving it null lets scene.environment apply, and envMapIntensity here
     // scales it per material.
-    m.envMapIntensity = interiorKeys.has(key) ? 0.07 : 1;
+    // 0.55 outside, not 1.0. The environment map supplies a near-uniform
+    // irradiance from every direction, and at full strength it filled every
+    // shadow on the vehicle: the tank had almost no value range, which is what
+    // made it read as one flat beige mass however much detail went onto it.
+    // Cutting it back lets the sun do the modelling and puts the crevices,
+    // the underside of the sponson and the running gear back into shadow.
+    m.envMapIntensity = interiorKeys.has(key) ? 0.07 : 0.55;
     m.needsUpdate = true;
   }
 }

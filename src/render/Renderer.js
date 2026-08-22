@@ -273,8 +273,12 @@ export class Renderer {
     // The light budget has to be shared with the environment map, which now
     // supplies most of the ambient term. Stacking the old flat-light values on
     // top of IBL blew every bright surface straight through the tone mapper.
-    this.sun.intensity = 4.2 * t.lightFactor * (1 - w.cloud * 0.55);
-    this.hemi.intensity = 0.22 + t.ambient * (0.28 + w.cloud * 0.6);
+    // Sun up, sky fill down. With the environment map cut back to 0.55 the sun
+    // has to carry the modelling, and a strong key against a modest fill is
+    // what gives a vehicle form. At 4.2 against a 0.42 hemisphere plus a
+    // full-strength environment, nothing on the tank was in shadow at all.
+    this.sun.intensity = 5.4 * t.lightFactor * (1 - w.cloud * 0.55);
+    this.hemi.intensity = 0.16 + t.ambient * (0.20 + w.cloud * 0.7);
     this.hemi.color.copy(sky);
     this.ambient.intensity = 0.06 + w.cloud * 0.14;
     this.ambient.color.copy(sky);
