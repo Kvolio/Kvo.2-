@@ -149,26 +149,39 @@ function buildWelds(lod) {
   const HW = L.hullHalfWU, HL = L.hullHalfL;
   const roofY = L.hullRoofY, sponY = 0.97;
 
+  // EVERY BEAD SITS PROUD OF THE SURFACE IT WELDS.
+  //
+  // They were all placed on their plates' CENTRE planes, which for an 80 mm
+  // side plate means a 28 mm bead buried entirely inside the armour. Not one
+  // weld on this hull was visible from outside, which is a large part of why
+  // the sides read as enormous blank panels. The offsets below put each bead on
+  // the outer face: the side plate's face is at HW + 0.04, the roof's top at
+  // roofY + 0.04, the rear plate's back at -HL - 0.05.
+  const SIDE = HW + 0.042;
+  const TOP = roofY + 0.042;
+
   for (const sx of [-1, 1]) {
     // Superstructure side to hull roof — the long seam down each sponson.
-    add([sx * HW, roofY, -HL + 0.1], [sx * HW, roofY, HL - 0.6]);
+    add([sx * SIDE, roofY, -HL + 0.1], [sx * SIDE, roofY, HL - 0.6]);
     // Superstructure side to sponson floor.
-    add([sx * HW, sponY, -HL + 0.2], [sx * HW, sponY, 2.5]);
+    add([sx * SIDE, sponY, -HL + 0.2], [sx * SIDE, sponY, 2.5]);
     // Side plate to the driver's front plate, up the front corner.
-    add([sx * HW, sponY, 2.55], [sx * HW, roofY, 2.55]);
+    add([sx * SIDE, sponY, 2.55], [sx * SIDE, roofY, 2.55]);
     // Side plate to the rear plate.
-    add([sx * HW, sponY, -HL + 0.05], [sx * HW, roofY, -HL + 0.05]);
+    add([sx * SIDE, sponY, -HL + 0.05], [sx * SIDE, roofY, -HL + 0.05]);
+    // The lower tub side to the sponson floor, below the fender line.
+    add([sx * (L.hullHalfWL + 0.035), sponY - 0.03, -2.9], [sx * (L.hullHalfWL + 0.035), sponY - 0.03, 2.9]);
   }
   // Glacis to driver's plate, across the front.
-  add([-HW, 1.70, 2.60], [HW, 1.70, 2.60]);
+  add([-HW, 1.72, 2.66], [HW, 1.72, 2.66]);
   // Glacis to hull roof.
-  add([-HW, roofY - 0.02, 2.30], [HW, roofY - 0.02, 2.30]);
+  add([-HW, TOP, 2.30], [HW, TOP, 2.30]);
   // Nose plate to driver's plate.
-  add([-HW, 1.02, 3.06], [HW, 1.02, 3.06]);
+  add([-HW, 1.02, 3.11], [HW, 1.02, 3.11]);
   // Rear plate to engine deck.
-  add([-HW, roofY - 0.02, -HL + 0.08], [HW, roofY - 0.02, -HL + 0.08]);
+  add([-HW, TOP, -HL + 0.08], [HW, TOP, -HL + 0.08]);
   // Rear plate to lower rear plate.
-  add([-L.hullHalfWL, 0.90, -HL + 0.02], [L.hullHalfWL, 0.90, -HL + 0.02]);
+  add([-L.hullHalfWL, 0.90, -HL - 0.05], [L.hullHalfWL, 0.90, -HL - 0.05]);
 
   return g;
 }
