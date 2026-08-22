@@ -209,3 +209,40 @@ narrow relative to the hull. 25. Deck grilles have no depth.
 3. **Materials and surface** — 9, 10, 11, 17.
 
 Stowage and fittings (12, 13, 16) and the stray geometry sweep (15) follow.
+
+### Round 2 — what has been fixed so far
+
+Working the critic's own order. Fixes are verified against the reference
+photographs and the drawing, not against my own judgement of the render.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | Sprocket has no teeth, nothing engages | **fixed** — twin toothed rings on a hub, one tooth per link so tooth pitch equals track pitch, plus the bolted final drive housing that was entirely absent |
+| 3 | Track does not touch the running gear or the ground | **fixed** — the loop is constructed from true tangents to the sprocket and idler; lower run flat on the ground, upper run on the road wheel tops. Regression test added |
+| 8 | Suspension does not exist | **fixed** — eight stations per side with a hull-side bearing boss, a tapered trailing swing arm and the stub axle |
+| 4 | Road wheel is a flat disc with a torus round it | **fixed** — steel and rubber both lathed cross-sections, hub boss, dished web, rim flange, flat-faced tyre |
+| 2 | Track link reads as a sausage chain | **partly** — plate thickened, pin bosses cut back, grouser bar and proud pin ends added. Lightening holes still missing |
+| 7 | Turret is a box with a cylinder stuck on the front | **fixed** — one extruded horseshoe with an 85 mm wall and the roof let into it. No seam, and the plan outline now matches the drawing |
+| 5 | Mantlet protrudes as a separate pod | **partly** — brought back from 0.47 m proud to 0.31 m. Still reads as a capsule |
+| 6 | The gun has no muzzle brake | **fixed** — it had one, built as two thin slabs with open sides, which reads as two bars and a gap at any distance. Solid body now with the ports as recesses. The critic's reading of the render was fair even though the finding was literally wrong |
+| 15 | Stray geometry — white blob on the deck, bead-string tow cable | **partly** — the blob was bare machined metal on a painted deck; the cable is one continuous run now. Floating tow eye and mid-air bracket outstanding |
+| 23 | Fenders too narrow, tracks exposed from above | **not actioned** — measured from the plan view, the fenders span 1.15–1.85 m and the track 1.13–1.85 m, so they do cover it. The finding appears to be from the flat-lit render where fender and hull roof are indistinguishable |
+| 24 | Turret too narrow relative to the hull | **not actioned** — the turret measures 1.88 m against a 1.83 m ring, which is correct. The hull is 3.7 m wide, so a Tiger turret is genuinely about half the hull width |
+
+Two defects in my own verification tooling were found while doing this, both of
+which had been hiding model state from every critic:
+
+- **The plan view rendered with no turret in it.** Shadows were off, and turret
+  roof and hull roof are the same material both facing straight up, so a 0.77 m
+  step between them produced no tonal difference at all. The one view that
+  settles where the turret sits was blank, and I first read that as the turret
+  being missing from the model.
+- **The side view was clipping the muzzle.** The vehicle is not centred on its
+  own origin, so a frustum centred there cut the muzzle brake out of the view a
+  critic measures barrel length from.
+
+Outstanding and unstarted: the material split (9), surface storytelling and wear
+(10), the wood-grain albedo and inconsistent UV orientation (11), hull and
+turret stowage (12, 13), hull hatches as geometry (14), fittings that intersect
+rather than join (16), edge bevels and weld beads (17), and legibility at
+100 m (18).
