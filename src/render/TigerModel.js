@@ -23,6 +23,7 @@
 import * as THREE from 'three';
 import { L, TIGER_1H } from '../data/tiger1h.js';
 import { M } from './Materials.js';
+import * as MARK from './Markings.js';
 
 const DEG = Math.PI / 180;
 
@@ -459,19 +460,60 @@ function buildEngineDeck(lod) {
   const g = new THREE.Group();
   const deckY = L.hullRoofY + 0.01;
 
-  // Central engine access hatch.
-  g.add(box(1.10, 0.05, 1.05, M.hullDark(), 0, deckY, -2.10));
+  // Central engine access hatch: a raised plate with a rim, hinges and a
+  // handle, not a rectangle laid on the deck.
+  g.add(box(1.10, 0.05, 1.05, M.hullDark(), 0, deckY + 0.015, -2.10));
+  if (lod < 2) {
+    for (const dz of [-0.56, 0.56]) {
+      g.add(box(1.20, 0.045, 0.06, M.hullDetail(), 0, deckY + 0.005, -2.10 + dz));
+    }
+    for (const dx of [-0.59, 0.59]) {
+      g.add(box(0.06, 0.045, 1.16, M.hullDetail(), dx, deckY + 0.005, -2.10));
+    }
+    for (const hx of [-0.34, 0.34]) {
+      g.add(box(0.16, 0.06, 0.10, M.steel(), hx, deckY + 0.04, -2.10 - 0.55));
+    }
+    const lift = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.012, 5, 10, Math.PI), M.steel());
+    lift.position.set(0, deckY + 0.045, -2.10 + 0.42);
+    lift.rotation.set(Math.PI / 2, 0, 0);
+    g.add(lift);
+  }
 
-  // Four radiator/fan access hatches, two each side.
+  // Four armoured air intakes, two each side, over the radiators and fans.
+  //
+  // These must have DEPTH. Built as flat slats lying on the deck they read as
+  // painted-on stripes. The hull under them is solid, so the depth is made by
+  // standing a cowl on the deck: a dark well, a frame, and the louvres across
+  // the top of the frame with real gaps between them, so light gets in, shadow
+  // falls on the well floor, and you can see that the tank breathes.
   for (const sx of [-1, 1]) {
     for (const z of [-1.55, -2.62]) {
-      g.add(box(0.72, 0.045, 0.80, M.hullDark(), sx * 1.18, deckY, z));
+      const cx = sx * 1.18;
+      const W = 0.72, D = 0.80, RIM = 0.115;
+      // The dark well floor and its four walls.
+      g.add(box(W, 0.02, D, M.burnt(), cx, deckY + 0.012, z));
       if (lod < 2) {
-        // Armoured louvres over the fan intakes.
-        for (let i = 0; i < 5; i++) {
-          const lv = box(0.66, 0.035, 0.055, M.steel(), sx * 1.18, deckY + 0.035, z - 0.28 + i * 0.14);
-          lv.rotation.x = 22 * DEG;
+        g.add(box(0.035, RIM, D, M.hullDark(), cx - W / 2, deckY + RIM / 2, z));
+        g.add(box(0.035, RIM, D, M.hullDark(), cx + W / 2, deckY + RIM / 2, z));
+        g.add(box(W + 0.07, RIM, 0.035, M.hullDark(), cx, deckY + RIM / 2, z - D / 2));
+        g.add(box(W + 0.07, RIM, 0.035, M.hullDark(), cx, deckY + RIM / 2, z + D / 2));
+        // The bolted frame flange around the opening.
+        g.add(box(W + 0.14, 0.04, 0.055, M.hullDetail(), cx, deckY + 0.02, z - D / 2 - 0.04));
+        g.add(box(W + 0.14, 0.04, 0.055, M.hullDetail(), cx, deckY + 0.02, z + D / 2 + 0.04));
+        g.add(box(0.055, 0.04, D + 0.14, M.hullDetail(), cx - W / 2 - 0.04, deckY + 0.02, z));
+        g.add(box(0.055, 0.04, D + 0.14, M.hullDetail(), cx + W / 2 + 0.04, deckY + 0.02, z));
+        // Armoured louvres across the top of the well. Pitched 0.105 apart with
+        // a 0.10 chord at 28 degrees, so they overlap enough to keep a grenade
+        // out and still leave 17 mm of darkness visible between them.
+        for (let i = 0; i < 7; i++) {
+          const lv = box(W - 0.03, 0.022, 0.10, M.steel(), cx, deckY + RIM - 0.012,
+            z - 0.315 + i * 0.105);
+          lv.rotation.x = 28 * DEG;
           g.add(lv);
+        }
+        // The two coarse protective ribs running across the louvres.
+        for (const rx of [-0.20, 0.20]) {
+          g.add(box(0.028, 0.022, D - 0.06, M.darkSteel(), cx + rx, deckY + RIM + 0.008, z));
         }
       }
     }
@@ -634,33 +676,79 @@ function buildTurret(lod) {
   }
 
   // ---- Mantlet (Walzenblende) --------------------------------------------
+  // A Walzenblende is a CASTING, not a length of tube. Its profile steps down
+  // twice on the way out to the trunnions, swells very slightly through the
+  // middle, and its surface is foundry-wavy rather than machined. Built as a
+  // plain capped cylinder it read as a drainpipe bolted onto the turret.
   const mantlet = new THREE.Group();
-  const mCore = cyl(0.34, 0.34, 1.52, lod === 0 ? 20 : 10, M.mantlet(), 0, 0, 0);
-  mCore.rotation.z = Math.PI / 2;
+  const MHW = 0.76;                                     // half width, 1.52 m
+  const MR = 0.352;                                     // radius at the middle
+  const mProfile = [
+    [0.000, -1.000], [0.190, -1.000], [0.240, -0.967], [0.262, -0.921],
+    [0.268, -0.868], [0.300, -0.842], [0.306, -0.789], [0.338, -0.737],
+    [0.348, -0.658], [0.352,  0.000], [0.348,  0.658], [0.338,  0.737],
+    [0.306,  0.789], [0.300,  0.842], [0.268,  0.868], [0.262,  0.921],
+    [0.240,  0.967], [0.190,  1.000], [0.000,  1.000],
+  ].map(([r, a]) => new THREE.Vector2(r, a * MHW));
+  const mGeo = new THREE.LatheGeometry(mProfile, lod === 0 ? 26 : 12);
+  {
+    // Foundry surface: low-frequency waviness of a few millimetres, applied
+    // along the radius so the silhouette picks it up too. This is what
+    // separates a cast component from a rolled one at a glance.
+    const pos = mGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const rr = Math.hypot(x, z);
+      if (rr < 1e-4) continue;
+      const d = (Math.sin(x * 7.3 + y * 4.1) * 0.40
+               + Math.sin(y * 9.7 - z * 6.2) * 0.35
+               + Math.sin(z * 11.3 + x * 5.9) * 0.25) * 0.0055;
+      pos.setX(i, x + (x / rr) * d);
+      pos.setZ(i, z + (z / rr) * d);
+    }
+    mGeo.computeVertexNormals();
+  }
+  const mCore = new THREE.Mesh(mGeo, M.mantlet());
+  mCore.rotation.z = Math.PI / 2;                       // lathe axis -> across
+  mCore.castShadow = true; mCore.receiveShadow = true;
   mantlet.add(mCore);
-  // The trunnion bosses — around 200 mm, the thickest steel on the tank.
+  // Trunnion stub arms, outboard of the casting and running back into the
+  // turret cheeks. Around 200 mm of steel — the thickest on the tank.
   for (const sx of [-1, 1]) {
-    const boss = cyl(0.30, 0.26, 0.20, lod === 0 ? 16 : 8, M.mantlet(), sx * 0.66, 0, 0.03);
-    boss.rotation.z = Math.PI / 2;
-    mantlet.add(boss);
+    const arm = cyl(0.135, 0.135, 0.20, lod === 0 ? 14 : 8, M.mantlet(), sx * 0.80, 0, -0.06);
+    arm.rotation.z = Math.PI / 2;
+    mantlet.add(arm);
   }
   mantlet.position.set(0, L.trunnionY, 1.36);
 
-  // TWO sight apertures — the binocular TZF 9b. A monocular TZF 9c tank has one.
-  // This is the single easiest way to date a Tiger in a photograph.
   if (lod < 2) {
-    for (const sx of [-1, -0.72]) {
-      const ap = cyl(0.038, 0.038, 0.09, 10, M.darkSteel(), sx * 0.32, 0.04, 0.30);
-      ap.rotation.x = Math.PI / 2;
-      mantlet.add(ap);
+    // The raised collar the tube passes through, standing proud of the face.
+    const collar = cyl(0.118, 0.152, 0.14, lod === 0 ? 16 : 9, M.mantlet(), 0, 0, 0.30);
+    collar.rotation.x = Math.PI / 2;
+    mantlet.add(collar);
+
+    // TWO sight apertures — the binocular TZF 9b, about 190 mm apart, both on
+    // the gunner's side of the gun. A monocular TZF 9c tank has one, and this
+    // is the single easiest way to date a Tiger in a photograph.
+    // They are dark recessed slots under a brow, not pipes: an aperture that
+    // sticks out of the armour reads as plumbing.
+    for (const ax of [-0.42, -0.23]) {
+      const ay = 0.04;
+      const az = Math.sqrt(Math.max(0.01, MR * MR - ay * ay));
+      mantlet.add(box(0.072, 0.052, 0.07, M.darkSteel(), ax, ay, az - 0.030));
+      mantlet.add(box(0.098, 0.016, 0.055, M.mantlet(), ax, ay + 0.046, az + 0.004));
     }
-    // Coaxial MG 34 port, right of the gun.
-    const mgPort = cyl(0.045, 0.045, 0.12, 10, M.darkSteel(), 0.26, -0.02, 0.30);
+    // Coaxial MG 34 port, on the loader's side of the gun.
+    const my = -0.02;
+    const mz = Math.sqrt(Math.max(0.01, MR * MR - my * my));
+    const mgPort = cyl(0.052, 0.052, 0.09, 10, M.darkSteel(), 0.26, my, mz - 0.035);
     mgPort.rotation.x = Math.PI / 2;
     mantlet.add(mgPort);
-    const mgBarrel = cyl(0.018, 0.018, 0.30, 8, M.darkSteel(), 0.26, -0.02, 0.44);
+    const mgBarrel = cyl(0.017, 0.017, 0.26, 8, M.darkSteel(), 0.26, my, mz + 0.10);
     mgBarrel.rotation.x = Math.PI / 2;
     mantlet.add(mgBarrel);
+    // The flange along the bottom edge of the casting.
+    mantlet.add(box(1.28, 0.05, 0.15, M.mantlet(), 0, -0.332, 0.09));
   }
   g.add(mantlet);
   g.userData.mantlet = mantlet;
@@ -1016,6 +1104,55 @@ function buildHullSides(lod) {
 }
 
 /**
+ * UNIT MARKINGS.
+ *
+ * s.Pz.Abt. 503 at Zitadelle carried a Balkenkreuz on the hull sides and rear
+ * and a large white-outline "S"-number on the turret sides. Our tank is S13 —
+ * "Tiger 101" is the radio callsign and was never painted on anything.
+ *
+ * They go on last, as decals sitting a few millimetres proud of the armour,
+ * because the hull is built from sixty separate boxes and there is no single
+ * UV space to paint into. Placement has to dodge the fittings that are already
+ * there: the tow cables on the sponson, the spare track links and the smoke
+ * dischargers on the turret side, the exhausts and the jack on the rear plate.
+ */
+function buildMarkings(lod, turmNummer) {
+  const g = new THREE.Group();
+  g.name = 'markings';
+  if (lod > 1) return g;                       // not legible at distance anyway
+
+  const kreuz = MARK.balkenkreuz();
+  const nummer = MARK.turmNummer(turmNummer);
+
+  if (kreuz) {
+    // Hull sides, on the 80 mm superstructure plate, above the tow cable run
+    // and behind the driver's vision. Outer face of that plate is at 1.8135.
+    const sideX = L.hullHalfWU + 0.045;
+    for (const sx of [-1, 1]) {
+      const d = MARK.flatDecal(kreuz, 0.42, 0.42, sx * sideX, 1.47, -1.55,
+        sx > 0 ? '+x' : '-x');
+      if (d) g.add(d);
+    }
+    // Rear plate, on the centre line between the two exhaust stacks. The plate
+    // leans back 8 degrees, so the decal has to lean with it or it stands off
+    // the armour at one edge and sinks into it at the other.
+    const rear = MARK.flatDecal(kreuz, 0.34, 0.34, 0, 1.226, -3.183, '-z');
+    if (rear) { rear.rotation.set(8 * DEG, Math.PI, 0); g.add(rear); }
+  }
+
+  if (nummer) {
+    // Turret sides. Wrapped onto the horseshoe: a flat plane laid on a 0.94 m
+    // radius sinks 4 cm into the armour at its corners. Sits above the spare
+    // track links (top at 2.04) and behind the smoke discharger bracket.
+    for (const th of [Math.PI / 2 + 0.42, -(Math.PI / 2 + 0.42)]) {
+      const d = MARK.curvedDecal(nummer, 0.955, 0.52, 0.26, th, 2.19, 0.06);
+      if (d) g.add(d);
+    }
+  }
+  return g;
+}
+
+/**
  * Build a Tiger I Ausf. H.
  * @param {object} opts { lod: 0|1|2, feifel: boolean, turmNummer: string }
  */
@@ -1057,6 +1194,14 @@ export function buildTiger(opts = {}) {
   const turret = buildTurret(lod);
   turret.position.set(0, 0, L.turretCentreZ);
   root.add(turret);
+
+  // ---- Unit markings -------------------------------------------------------
+  // The turret number belongs to the turret and traverses with it; the crosses
+  // belong to the hull.
+  const marks = buildMarkings(lod, opts.turmNummer || 'S13');
+  const turretMarks = marks.children.filter((c) => c.geometry?.type === 'CylinderGeometry');
+  for (const t of turretMarks) turret.add(t);
+  root.add(marks);
 
   root.userData = {
     lod,

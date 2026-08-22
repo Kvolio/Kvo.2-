@@ -37,6 +37,7 @@ const browser = await chromium.launch({
     '--disable-dev-shm-usage', '--enable-webgl', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
+page.setDefaultTimeout(180000);
 page.on('pageerror', (e) => errors.push(`PAGEERROR: ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
@@ -86,7 +87,9 @@ await page.evaluate(() => {
  * @param {object} shot   { pos, at, fov, interior, relative, setup }
  */
 async function capture(name, shot) {
-  if (ONLY && !name.includes(ONLY)) return;
+  // --only takes a comma-separated list of substrings, so a round can re-shoot
+  // just the views a critic complained about.
+  if (ONLY && !ONLY.split(',').some((f) => name.includes(f.trim()))) return;
   await page.evaluate((s) => {
     const g = window.__tiger;
     if (s.setup) new Function('g', s.setup)(g);
@@ -101,7 +104,7 @@ async function capture(name, shot) {
     };
   }, shot);
   await page.waitForTimeout(shot.settle ?? 1400);
-  await page.screenshot({ path: `${OUT}/${name}.png` });
+  await page.screenshot({ path: `${OUT}/${name}.png`, timeout: 180000 });
   console.log(`  ${name}`);
 }
 
