@@ -119,3 +119,11 @@ test('the vehicle frame is right-handed, so the crew are not sitting in each oth
   assert.equal(Math.sign(cupola.x), Math.sign(STATIONS.commander.seat[0]),
     'model and data must put the commander on the same side of the tank');
 });
+
+test('each side carries the twenty-four road wheels a rubber-tyred Tiger has', () => {
+  const t = buildTiger({ lod: 0 });
+  for (const side of ['left', 'right']) {
+    const n = t.userData.gear[side].userData.wheels.length;
+    assert.equal(n, 24, `${side} side has ${n} road wheels, and a Tiger I has 24 per side`);
+  }
+});

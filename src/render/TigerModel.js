@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { L, TIGER_1H } from '../data/tiger1h.js';
 import { M } from './Materials.js';
 import * as MARK from './Markings.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const DEG = Math.PI / 180;
 
@@ -273,7 +274,13 @@ function buildRunningGear(side, lod) {
   for (let r = 0; r < rankOffsets.length; r++) {
     // Ranks are staggered by half a station, which is what makes them interleave.
     const offset = (r % 2) * spacing * 0.5;
-    const count = r === 1 ? stations : stations - (r === 2 ? 1 : 0);
+    // Eight per rank, three ranks: the 24 road wheels a rubber-tyred Tiger I
+    // carries on each side. It was 23 because the outer rank silently dropped
+    // one, which is the kind of thing that is invisible until something counts.
+    // NOTE: the exact axle arrangement — how many wheels ride on each of the
+    // eight torsion-bar stations, and therefore how the ranks stagger — is a
+    // row still marked "derive from diagram" in docs/TIGER-CONFIGURATION.md.
+    const count = stations;
     for (let i = 0; i < count; i++) {
       const z = first - i * spacing - offset;
       if (Math.abs(z) > L.trackContact / 2 + 0.2) continue;
@@ -696,7 +703,7 @@ function buildTurret(lod) {
     [0.306,  0.789], [0.300,  0.842], [0.268,  0.868], [0.262,  0.921],
     [0.240,  0.967], [0.190,  1.000], [0.000,  1.000],
   ].map(([r, a]) => new THREE.Vector2(r, a * MHW));
-  const mGeo = new THREE.LatheGeometry(mProfile, lod === 0 ? 26 : 12);
+  let mGeo = new THREE.LatheGeometry(mProfile, lod === 0 ? 26 : 12);
   {
     // Foundry surface: low-frequency waviness of a few millimetres, applied
     // along the radius so the silhouette picks it up too. This is what
@@ -712,8 +719,13 @@ function buildTurret(lod) {
       pos.setX(i, x + (x / rr) * d);
       pos.setZ(i, z + (z / rr) * d);
     }
-    mGeo.computeVertexNormals();
   }
+  // NOT computeVertexNormals(). LatheGeometry shares one vertex ring per profile
+  // point, so averaging across them rounds every step in the casting away and
+  // the Walzenblende comes out as a soft grey loaf. Creasing at 40 degrees keeps
+  // the cylindrical body smooth and the steps, shoulders and end faces sharp,
+  // which is the difference between a casting and a length of drainpipe.
+  mGeo = toCreasedNormals(mGeo, 40 * DEG);
   const mCore = new THREE.Mesh(mGeo, M.mantlet());
   mCore.rotation.z = Math.PI / 2;                       // lathe axis -> across
   mCore.castShadow = true; mCore.receiveShadow = true;
