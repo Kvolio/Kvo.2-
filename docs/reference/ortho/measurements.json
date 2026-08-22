@@ -1,6 +1,90 @@
 {
   "metresPerPixel": 0.005,
   "views": {
+    "front": {
+      "view": "front",
+      "width": 900,
+      "height": 800,
+      "metresPerPixel": 0.005,
+      "worldWidth": 4.5,
+      "worldHeight": 4,
+      "frustumCentre": [
+        0,
+        1.75,
+        0
+      ],
+      "originPx": [
+        450,
+        750
+      ],
+      "screenRight": [
+        1,
+        0,
+        0
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
+    "rear": {
+      "view": "rear",
+      "width": 900,
+      "height": 800,
+      "metresPerPixel": 0.005,
+      "worldWidth": 4.5,
+      "worldHeight": 4,
+      "frustumCentre": [
+        0,
+        1.75,
+        0
+      ],
+      "originPx": [
+        450,
+        750
+      ],
+      "screenRight": [
+        -1,
+        0,
+        0
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
+    "left": {
+      "view": "left",
+      "width": 2080,
+      "height": 800,
+      "metresPerPixel": 0.005,
+      "worldWidth": 10.4,
+      "worldHeight": 4,
+      "frustumCentre": [
+        0,
+        1.75,
+        0.9
+      ],
+      "originPx": [
+        1219.9999999999993,
+        750
+      ],
+      "screenRight": [
+        0,
+        0,
+        -1
+      ],
+      "screenUp": [
+        0,
+        1,
+        0
+      ],
+      "groundLinePx": 750
+    },
     "right": {
       "view": "right",
       "width": 2080,
@@ -29,38 +113,38 @@
       ],
       "groundLinePx": 750
     },
-    "front": {
-      "view": "front",
+    "top": {
+      "view": "top",
       "width": 900,
-      "height": 800,
+      "height": 2080,
       "metresPerPixel": 0.005,
       "worldWidth": 4.5,
-      "worldHeight": 4,
+      "worldHeight": 10.4,
       "frustumCentre": [
         0,
-        1.75,
-        0
+        0,
+        0.9
       ],
       "originPx": [
         450,
-        750
+        1219.9999999999993
       ],
       "screenRight": [
-        1,
+        -1,
         0,
         0
       ],
       "screenUp": [
         0,
-        1,
-        0
+        0,
+        1
       ],
-      "groundLinePx": 750
+      "groundLinePx": 1219.9999999999993
     }
   },
   "measurements": {
-    "triangles": 225626,
-    "meshes": 608,
+    "triangles": 225818,
+    "meshes": 610,
     "overall": {
       "min": [
         -1.8525,
@@ -137,7 +221,7 @@
         "min": [
           -0.1184,
           2.002,
-          1.67
+          1.61
         ],
         "max": [
           0.1184,
@@ -147,12 +231,12 @@
         "size": [
           0.2367,
           0.236,
-          3.622
+          3.682
         ],
         "centre": [
           0,
           2.12,
-          3.481
+          3.451
         ]
       },
       "cupola": {
