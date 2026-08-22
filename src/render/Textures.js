@@ -31,6 +31,12 @@ function hash2(x, y, seed) {
 
 function smooth(t) { return t * t * (3 - 2 * t); }
 
+// NOTE ON TILING. valueNoise is lattice-based, so unless a call is given a
+// period it does not wrap: the value at u=0 and the value at u=1 are unrelated
+// and every texture shows a hard seam at each repeat. A hull side tiling twice
+// therefore had a visible join straight down the middle of it. Pass `tile` — the
+// same multiplier applied to u and v — and the pattern wraps exactly.
+
 function valueNoise(x, y, seed) {
   const xi = Math.floor(x), yi = Math.floor(y);
   const xf = x - xi, yf = y - yi;
@@ -56,11 +62,21 @@ function fbm(x, y, seed, octaves = 4, lacunarity = 2, gain = 0.5, tile = 0) {
   return sum / norm;
 }
 
-/** Ridged noise — good for scratches, grain and worn edges. */
-function ridged(x, y, seed, octaves = 4) {
-  let amp = 1, freq = 1, sum = 0, norm = 0;
+/**
+ * Ridged noise — good for scratches, grain and worn edges.
+ * `tile` is the period in input units: pass the same multiplier used on u and v
+ * and the pattern wraps at the texture edge instead of showing a seam.
+ */
+function ridged(x, y, seed, octaves = 4, tile = 0) {
+  let sum = 0, amp = 1, freq = 1, norm = 0;
   for (let i = 0; i < octaves; i++) {
-    const n = Math.abs(valueNoise(x * freq, y * freq, seed + i * 57) * 2 - 1);
+    let sx = x * freq, sy = y * freq;
+    if (tile) {
+      const period = tile * freq;
+      sx = ((sx % period) + period) % period;
+      sy = ((sy % period) + period) % period;
+    }
+    const n = Math.abs(valueNoise(sx, sy, seed + i * 57) * 2 - 1);
     sum += (1 - n) * amp;
     norm += amp;
     amp *= 0.5; freq *= 2;
@@ -68,7 +84,6 @@ function ridged(x, y, seed, octaves = 4) {
   return sum / norm;
 }
 
-/** Voronoi cell distance — the basis for cast-steel pebbling and gravel. */
 function voronoi(x, y, seed, cells = 8) {
   const gx = Math.floor(x * cells), gy = Math.floor(y * cells);
   let best = 1e9, second = 1e9;
@@ -196,60 +211,71 @@ export function disposeTextures() {
  * bare metal, and it wears first on edges and around hatches.
  */
 export function paintedSteel(opts = {}) {
-  const tint = opts.tint || [0.66, 0.58, 0.39];   // Dunkelgelb, linear-ish
+  const tint = opts.tint || [0.66, 0.58, 0.39];   // Dunkelgelb, as a display value
   const wear = opts.wear ?? 0.5;
   const key = `painted:${tint.join(',')}:${wear}`;
   return cached(key, (size) => {
-    const albedo = generate(size, (x, y, u, v) => {
-      // Paint tooth. This was a 34:6 anisotropic band, which made every plate
-      // on the tank look like light wood veneer — the whole vehicle read as a
-      // plywood mock-up. Rolled steel under sprayed paint has no visible
-      // directional grain at this scale; it has tooth and it has blotch.
-      const grain = fbm(u * 26, v * 26, 11, 3) * 0.045;
-      // Broad paint mottle from spray application.
-      const mottle = fbm(u * 5, v * 5, 23, 4) * 0.13 - 0.06;
-      // Chipping: sparse, sharp, revealing primer.
-      const chipField = ridged(u * 26, v * 26, 41, 3);
-      const chip = chipField > (1 - 0.13 * wear) ? 1 : 0;
-      // Fine scratches. These were authored at 90:12 — a twelve-to-one stretch
-      // along v — which laid long parallel streaks across every plate and made
-      // the whole tank read as varnished planking. Rolled armour under sprayed
-      // paint has no grain at this scale. Kept faintly directional, because
-      // brush and rag marks do run one way, but nothing like enough to read as
-      // timber, and rarer so they are incidents rather than a pattern.
-      const scratch = ridged(u * 60, v * 34, 67, 2) > 0.965 ? 0.10 : 0;
-      // Dust film. The height term that used to be here (v as a proxy for
-      // height up the plate) was a LINEAR GRADIENT INSIDE A TILED TEXTURE, so
-      // it repeated as a hard band at every tile boundary — several stripes
-      // down the side of a hull that tiles four times. Height-varying dirt
-      // cannot live in the tile; it is a separate material for the parts that
-      // actually sit low on the vehicle.
-      const dust = fbm(u * 8, v * 8, 89, 3) * 0.10;
+    // A real painted vehicle varies at FOUR scales, and the old texture only had
+    // two of them at tiny amplitude — plus or minus 0.06 on a 0.66 base. That is
+    // why the tank read as one flat beige mass however well it was lit: nothing
+    // on it varied enough to see. Amplitudes below are roughly tripled and a
+    // large-scale fade layer and vertical streaking are added.
+    const patch = (u, v) => fbm(u * 2, v * 2, 7, 3, 2, 0.5, 2);          // whole-panel fade
+    const blotch = (u, v) => fbm(u * 6, v * 6, 23, 4, 2, 0.5, 6);            // dirt patches
+    const streak = (u, v) => {
+      // Rain and dust run DOWNWARD, so this one is deliberately anisotropic —
+      // the one place on a tank where a directional pattern is correct.
+      const s1 = ridged(u * 44, v * 4, 131, 2, 44);
+      return Math.max(0, s1 - 0.55) * 2.2;
+    };
 
-      let r = tint[0] + grain + mottle - scratch;
-      let g = tint[1] + grain + mottle - scratch;
-      let b = tint[2] + grain + mottle * 0.7 - scratch;
-      if (chip) { r = 0.30; g = 0.16; b = 0.10; }            // red-oxide primer
-      // Dust is a pale warm grey laid over the top.
-      r = r * (1 - dust) + 0.62 * dust;
-      g = g * (1 - dust) + 0.57 * dust;
-      b = b * (1 - dust) + 0.46 * dust;
+    const albedo = generate(size, (x, y, u, v) => {
+      const grain = fbm(u * 26, v * 26, 11, 3, 2, 0.5, 26) * 0.045;
+      const p = patch(u, v);
+      const bl = blotch(u, v);
+      const st = streak(u, v);
+
+      // Sun-faded paint where it is exposed, deeper colour where it is not.
+      const fade = (p - 0.5) * 0.20;
+      // Dirt: a warm grey-brown laid over the paint in patches and streaks.
+      const dirt = Math.min(1, (bl > 0.56 ? (bl - 0.56) * 2.4 : 0) * 0.9 + st * 0.55) * (0.35 + wear * 0.65);
+
+      // Chipping to red-oxide primer, on the same field as the normal map.
+      const chipField = ridged(u * 26, v * 26, 41, 3, 26);
+      const chip = chipField > (1 - 0.14 * wear) ? 1 : 0;
+      const scratch = ridged(u * 60, v * 36, 67, 2, 60) > 0.965 ? 0.10 : 0;
+
+      let r = tint[0] + grain + fade - scratch;
+      let g = tint[1] + grain + fade * 0.92 - scratch;
+      let b = tint[2] + grain + fade * 0.70 - scratch;
+      if (chip) { r = 0.34; g = 0.19; b = 0.13; }
+      r = r * (1 - dirt) + 0.44 * dirt;
+      g = g * (1 - dirt) + 0.39 * dirt;
+      b = b * (1 - dirt) + 0.30 * dirt;
       return [r, g, b];
     });
 
     const normal = normalFromHeight(size, (x, y, u, v) => {
-      const grain = fbm(u * 26, v * 26, 11, 3) * 0.30;
-      const chip = ridged(u * 26, v * 26, 41, 3) > (1 - 0.13 * wear) ? 0.5 : 0;
-      const tooth = fbm(u * 120, v * 120, 5, 2) * 0.12;
+      const grain = fbm(u * 26, v * 26, 11, 3, 2, 0.5, 26) * 0.30;
+      const chip = ridged(u * 26, v * 26, 41, 3, 26) > (1 - 0.14 * wear) ? 0.6 : 0;
+      const tooth = fbm(u * 120, v * 120, 5, 2, 2, 0.5, 120) * 0.16;
       return grain + chip + tooth;
-    }, 1.6);
+    }, 2.1);
 
     const rough = generate(size, (x, y, u, v) => {
-      // Paint is matt; chips and worn edges are rougher still; dust is rougher.
-      const base = 0.74 + fbm(u * 9, v * 9, 31, 3) * 0.12;
-      const chip = ridged(u * 26, v * 26, 41, 3) > (1 - 0.13 * wear) ? 0.14 : 0;
-      const dustR = fbm(u * 8, v * 8, 89, 3) * 0.10;
-      const r = Math.min(0.98, base + chip + dustR);
+      // ROUGHNESS VARIATION is what makes a surface read as a real object, and
+      // this map used to run 0.74 to 0.86 — a twelfth of the available range, so
+      // every square metre of the tank caught the light identically. Dust is
+      // matte, paint that has been rubbed by crew and branches is glossier,
+      // chipped primer is rougher still. Now 0.34 to 0.97.
+      const p = patch(u, v);
+      const bl = blotch(u, v);
+      const st = streak(u, v);
+      const chip = ridged(u * 26, v * 26, 41, 3, 26) > (1 - 0.14 * wear) ? 0.16 : 0;
+      const dusty = Math.min(1, (bl > 0.56 ? (bl - 0.56) * 2.4 : 0) + st * 0.6);
+      const polish = Math.max(0, p - 0.62) * 1.6;       // rubbed and handled
+      const r = Math.max(0.34, Math.min(0.97,
+        0.62 + dusty * 0.30 + chip - polish * 0.42 + fbm(u * 14, v * 14, 31, 3, 2, 0.5, 14) * 0.10));
       return [r, r, r];
     });
 
@@ -622,7 +648,10 @@ export const MATERIAL_SETS = {
 
 /** Texture resolution per quality preset. */
 export const TEXTURE_RESOLUTION = {
-  low: 128, medium: 256, high: 512, ultra: 512, cinematic: 1024,
+  // Raised across the board. A hull side 5.9 m long tiling twice was getting
+  // 512 px over 3 m of steel — about 170 pixels per metre, which is why the
+  // armour had no surface at any distance under ten metres.
+  low: 192, medium: 384, high: 768, ultra: 1024, cinematic: 1536,
 };
 
 /**

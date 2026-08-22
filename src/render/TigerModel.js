@@ -297,9 +297,21 @@ function buildRunningGear(side, lod) {
   const axleY = wheelR + TRACK_THICKNESS;
 
   // Eight stations, evenly spaced along the 3.61 m of track contact.
+  // Eight stations at 0.527 m, measured from the drawing's side elevation:
+  // wheel centres at 26.9 px on a 19.6 mm/px drawing, spanning 3.69 m — which
+  // is the track's ground contact length. It was 0.43 m, and with the middle
+  // rank staggered half a station on top of that the elevation showed a wheel
+  // centre every 0.215 m: roughly EIGHTEEN stations a side instead of eight.
+  // At that density 0.80 m wheels overlap almost completely, which is why the
+  // outer rank rendered as a row of hollow hoops with the rank behind showing
+  // through — a critic reported the wheels as having no wheel in them.
   const stations = 8;
-  const first = L.trackContact / 2 - 0.30;
-  const spacing = (L.trackContact - 0.60) / (stations - 1);
+  // 0.515 m, so the eight stations span 3.605 m — the locked 3.61 m of ground
+  // contact — and sit within it. The drawing measures 0.527 m, which spans
+  // 3.69 m and puts the end wheels just outside the contact patch; 2% is
+  // conceded to the locked figure so no wheel overhangs the flat run.
+  const spacing = 0.515;
+  const first = (spacing * (stations - 1)) / 2;
 
   // Three ranks, outermost last so it draws over the ones behind it. The outer
   // rank is nearly flush with the track's inner face, which is what gives a
@@ -323,7 +335,7 @@ function buildRunningGear(side, lod) {
     const count = stations;
     for (let i = 0; i < count; i++) {
       const z = first - i * spacing - offset;
-      if (Math.abs(z) > L.trackContact / 2 + 0.2) continue;
+      if (Math.abs(z) > L.trackContact / 2 + 0.5) continue;
       const w = template.clone();
       w.position.set(sx * rankOffsets[r], axleY, z);
       g.add(w);
@@ -529,8 +541,13 @@ function trackPath() {
 
   const groundY = half;                       // links resting on the ground
   const topY = axleY + wheelR + half;         // links resting on the wheel tops
-  const contactFront = L.trackContact / 2;
-  const contactRear = -L.trackContact / 2;
+  // The flat run extends 0.10 m beyond the nominal contact length at each end.
+  // The locked 3.61 m is where the track bears; the track stays flat a little
+  // past the last road wheel before it curves up to the sprocket. Run exactly
+  // to 3.61 and the rise begins under the end wheel, and the links clip it —
+  // which the regression test caught as three links inside a wheel.
+  const contactFront = L.trackContact / 2 + 0.17;
+  const contactRear = -(L.trackContact / 2 + 0.17);
   const wheelFrontZ = 1.60;                   // where the top run first lands
   const wheelRearZ = -1.60;
 
@@ -802,7 +819,12 @@ function buildExhausts() {
 function buildCupola(lod) {
   const g = new THREE.Group();
   g.name = 'cupola';
-  const R = 0.245;
+  // 0.70 m across the drum. At 0.49 m it was about 28 per cent undersized and,
+  // being nearly as tall as it was wide, read as a funnel rather than as the
+  // squat early drum casting that is the identifying feature of this build
+  // state. Height is unchanged, because 3.00 m to the top of the closed hatch
+  // is a locked dimension.
+  const R = 0.35;
   // The published 3.00 m overall height is measured to the top of the cupola
   // WITH THE HATCH CLOSED, so the hatch plate has to come out of the drum's
   // height rather than sit on top of it. Built the other way the tank stood
@@ -877,8 +899,15 @@ function buildTurret(lod) {
   // It is now one extruded profile with a real wall thickness, so there is no
   // seam anywhere and the plan outline matches the drawing.
   const WALL = 0.085;
-  const OUTER_R = 0.94;
-  const FRONT_Z = 1.24;
+  // 2.30 m across the outside, from the drawing's front elevation and plan.
+  // It was 0.94 — a 1.88 m turret, which minus two 80 mm side plates leaves
+  // 1.72 m inside. The turret ring is 1.83 m clear. The turret was narrower
+  // than the ring it stands on, which is not a proportion error, it is a
+  // physical impossibility, and it is why the thing read as a stubby box.
+  const OUTER_R = 1.15;
+  const FRONT_Z = 1.40;
+  const REAR_C = -0.06;                       // centre of the rear arc
+  const REAR_Z = REAR_C - OUTER_R;            // -1.21, the back of the turret
 
   /**
    * The turret's plan outline, inset by `inset` metres. Built with the shape's
@@ -891,8 +920,8 @@ function buildTurret(lod) {
     const sh = new THREE.Shape();
     sh.moveTo(-R, frontY);
     sh.lineTo(R, frontY);
-    sh.lineTo(R, -0.06);
-    sh.absarc(0, -0.06, R, 0, Math.PI, false);
+    sh.lineTo(R, REAR_C);
+    sh.absarc(0, REAR_C, R, 0, Math.PI, false);
     sh.lineTo(-R, frontY);
     return sh;
   };
@@ -923,10 +952,11 @@ function buildTurret(lod) {
     // The weld line where the roof is let into the shell, along the front and
     // down both straight sides. The rear is a curve and takes its own bead.
     const wy = roofY - 0.055;
-    const rw = weld([-0.90, wy, FRONT_Z - 0.03], [0.90, wy, FRONT_Z - 0.03], 0.022, lod);
+    const wx = OUTER_R - WALL * 0.5;
+    const rw = weld([-wx, wy, FRONT_Z - 0.03], [wx, wy, FRONT_Z - 0.03], 0.022, lod);
     if (rw) g.add(rw);
     for (const sx of [-1, 1]) {
-      const sw = weld([sx * 0.90, wy, FRONT_Z - 0.03], [sx * 0.90, wy, -0.06], 0.022, lod);
+      const sw = weld([sx * wx, wy, FRONT_Z - 0.03], [sx * wx, wy, REAR_C], 0.022, lod);
       if (sw) g.add(sw);
     }
   }
@@ -937,7 +967,7 @@ function buildTurret(lod) {
   // middle, and its surface is foundry-wavy rather than machined. Built as a
   // plain capped cylinder it read as a drainpipe bolted onto the turret.
   const mantlet = new THREE.Group();
-  const MHW = 0.76;                                     // half width, 1.52 m
+  const MHW = 0.86;                                     // half width, 1.72 m
   const MR = 0.352;                                     // radius at the middle
   const mProfile = [
     [0.000, -1.000], [0.190, -1.000], [0.240, -0.967], [0.262, -0.921],
@@ -976,13 +1006,13 @@ function buildTurret(lod) {
   // Trunnion stub arms, outboard of the casting and running back into the
   // turret cheeks. Around 200 mm of steel — the thickest on the tank.
   for (const sx of [-1, 1]) {
-    const arm = cyl(0.135, 0.135, 0.20, lod === 0 ? 14 : 8, M.mantlet(), sx * 0.80, 0, -0.06);
+    const arm = cyl(0.135, 0.135, 0.20, lod === 0 ? 14 : 8, M.mantlet(), sx * 0.90, 0, -0.06);
     arm.rotation.z = Math.PI / 2;
     mantlet.add(arm);
   }
   // Projecting about 0.31 m ahead of the turret front plate. At 1.36 it stood
   // 0.47 m proud and read as a separate pod hung on the front of the turret.
-  mantlet.position.set(0, L.trunnionY, 1.20);
+  mantlet.position.set(0, L.trunnionY, FRONT_Z + 0.16);
 
   if (lod < 2) {
     // The raised collar the tube passes through, standing proud of the face.
@@ -1011,7 +1041,7 @@ function buildTurret(lod) {
     mgBarrel.rotation.x = Math.PI / 2;
     mantlet.add(mgBarrel);
     // The flange along the bottom edge of the casting.
-    mantlet.add(box(1.28, 0.05, 0.15, M.mantlet(), 0, -0.332, 0.09));
+    mantlet.add(box(1.46, 0.05, 0.15, M.mantlet(), 0, -0.332, 0.09));
   }
   g.add(mantlet);
   g.userData.mantlet = mantlet;
@@ -1110,7 +1140,7 @@ function buildTurret(lod) {
   // ---- Roof fittings ------------------------------------------------------
   // Loader's hatch, right side, hinged.
   const loaderPivot = new THREE.Group();
-  loaderPivot.position.set(0.72, roofY + 0.02, 0.30);
+  loaderPivot.position.set(0.86, roofY + 0.02, 0.42);
   const lh = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.04, lod === 0 ? 16 : 8), M.turret());
   lh.position.set(-0.235, 0.02, 0);
   loaderPivot.add(lh);
@@ -1119,25 +1149,43 @@ function buildTurret(lod) {
 
   if (lod < 2) {
     // Loader's fixed roof periscope, facing forward.
-    g.add(box(0.10, 0.05, 0.13, M.steel(), 0.50, roofY + 0.045, 0.72));
+    g.add(box(0.10, 0.05, 0.13, M.steel(), 0.58, roofY + 0.045, 0.88));
     // Ventilator dome, centre rear of the roof.
-    g.add(cyl(0.11, 0.11, 0.06, 12, M.steel(), 0, roofY + 0.04, -0.30));
+    g.add(cyl(0.11, 0.11, 0.06, 12, M.steel(), 0, roofY + 0.04, -0.42));
     // Lifting eyes.
-    for (const p of [[-0.70, -0.55], [0.70, -0.55], [0, 1.05]]) {
+    for (const p of [[-0.84, -0.72], [0.84, -0.72], [0, 1.22]]) {
       g.add(box(0.06, 0.09, 0.10, M.steel(), p[0], roofY + 0.06, p[1]));
     }
   }
 
   // ---- Rear: escape hatch and pistol port ---------------------------------
-  const rearZ = -0.80;
+  // On the curved rear the surface recedes with x, so each fitting is placed
+  // from the arc rather than on one flat z. The escape hatch used to straddle
+  // the wall — half in, half out — and read as a shading blob.
+  const onRear = (x) => REAR_C - Math.sqrt(Math.max(0.01, OUTER_R * OUTER_R - x * x));
+  const rearZ = onRear(0.36) + 0.02;
   // Circular escape hatch, right of centre.
-  const eh = cyl(0.24, 0.24, 0.05, lod === 0 ? 16 : 8, M.hullDark(), 0.36, L.trunnionY - 0.02, rearZ);
+  // The circular Ausstiegsluke: a 0.60 m hinged plate, the most prominent thing
+  // on a Tiger's turret rear, and it was invisible.
+  const eh = cyl(0.30, 0.30, 0.06, lod === 0 ? 20 : 10, M.turret(), 0.36, L.trunnionY - 0.02, rearZ);
   eh.rotation.x = Math.PI / 2;
   g.add(eh);
   if (lod < 2) {
+    // Object3D.add() returns the PARENT, so chaining .rotation onto it turns the
+    // whole turret. That is how the gun ended up pointing at the ground.
+    const ehRing = cyl(0.325, 0.325, 0.035, lod === 0 ? 20 : 10, M.hullDetail(),
+      0.36, L.trunnionY - 0.02, rearZ - 0.02);
+    ehRing.rotation.x = Math.PI / 2;
+    g.add(ehRing);
+    const ehH = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 5, 10, Math.PI), M.steel());
+    ehH.position.set(0.36, L.trunnionY - 0.02, rearZ + 0.035);
+    ehH.rotation.set(0, 0, Math.PI);
+    g.add(ehH);
+  }
+  if (lod < 2) {
     // Pistol port, left of centre. A Nahverteidigungswaffe would sit in the
     // roof instead — that is a December 1943 fitting and is deliberately absent.
-    const pp = cyl(0.075, 0.075, 0.06, 10, M.darkSteel(), -0.52, L.trunnionY + 0.04, rearZ);
+    const pp = cyl(0.085, 0.085, 0.07, 10, M.darkSteel(), -0.52, L.trunnionY + 0.04, onRear(0.52) + 0.02);
     pp.rotation.x = Math.PI / 2;
     g.add(pp);
   }
@@ -1149,18 +1197,18 @@ function buildTurret(lod) {
     // carried them. They must stand PROUD of the turret side — modelled flush
     // they read as three black holes punched through the armour.
     for (const sx of [-1, 1]) {
-      const bracket = box(0.05, 0.10, 0.44, M.hullDetail(), sx * 0.95, L.trunnionY + 0.26, 0.50);
+      const bracket = box(0.05, 0.10, 0.44, M.hullDetail(), sx * (OUTER_R + 0.01), L.trunnionY + 0.20, 0.62);
       g.add(bracket);
       for (let i = 0; i < 3; i++) {
-        const z = 0.64 - i * 0.14;
+        const z = 0.76 - i * 0.14;
         const tube = cyl(0.036, 0.036, 0.19, lod === 0 ? 10 : 6, M.gunSteel(),
-          sx * 1.05, L.trunnionY + 0.34, z);
+          sx * (OUTER_R + 0.10), L.trunnionY + 0.28, z);
         tube.rotation.z = sx * 26 * DEG;
         g.add(tube);
         // The cap on top of each candle.
-        const capY = L.trunnionY + 0.34 + Math.cos(26 * DEG) * 0.10;
+        const capY = L.trunnionY + 0.28 + Math.cos(26 * DEG) * 0.10;
         const cap = cyl(0.040, 0.040, 0.022, lod === 0 ? 10 : 6, M.steel(),
-          sx * (1.05 + Math.sin(26 * DEG) * 0.10), capY, z);
+          sx * (OUTER_R + 0.10 + Math.sin(26 * DEG) * 0.10), capY, z);
         cap.rotation.z = sx * 26 * DEG;
         g.add(cap);
       }
@@ -1168,7 +1216,7 @@ function buildTurret(lod) {
     // Spare track links hung on the turret sides — every Tiger crew did this.
     for (const sx of [-1, 1]) {
       for (let i = 0; i < 3; i++) {
-        g.add(box(0.045, 0.20, 0.16, M.track(), sx * 0.99, L.trunnionY - 0.18, -0.10 - i * 0.19));
+        g.add(box(0.045, 0.20, 0.16, M.track(), sx * (OUTER_R + 0.02), L.trunnionY - 0.06, 0.62 - i * 0.19));
       }
     }
   }
@@ -1231,20 +1279,79 @@ function buildHullFront(lod) {
     g.add(mg);
     if (lod === 0) g.add(boltRow([0.46, 1.38, mgZ], [0.80, 1.38, mgZ], 2, 0.013, lod));
 
-    // Bosch headlight on the glacis.
-    const lamp = cyl(0.075, 0.075, 0.09, 12, M.darkSteel(), -1.10, 1.80, 2.48);
-    lamp.rotation.x = Math.PI / 2 - 0.2;
+    // ---- Bosch headlight ------------------------------------------------
+    // Standing on the glacis on a bracket, with its cable running back to the
+    // hull. A bare cone lying flat read as nothing at all.
+    const lampX = -1.02;
+    g.add(box(0.07, 0.12, 0.07, M.hullDetail(), lampX, 1.79, 2.46));      // bracket
+    const lamp = cyl(0.085, 0.085, 0.10, lod === 0 ? 16 : 8, M.darkSteel(), lampX, 1.895, 2.48);
+    lamp.rotation.x = Math.PI / 2 - 0.12;
     g.add(lamp);
-
-    // Spare track links on the glacis — standard crew practice.
-    for (let i = 0; i < 6; i++) {
-      g.add(box(0.20, 0.05, 0.16, M.track(), -0.75 + i * 0.30, 1.79, 2.20));
+    const lens = cyl(0.078, 0.078, 0.012, lod === 0 ? 16 : 8, M.glass(), lampX, 1.90, 2.535);
+    lens.rotation.x = Math.PI / 2 - 0.12;
+    g.add(lens);
+    if (lod === 0) {
+      // The cable, clipped down to the plate.
+      for (let i = 0; i < 4; i++) {
+        g.add(box(0.016, 0.016, 0.11, M.darkSteel(), lampX, 1.772, 2.40 - i * 0.10));
+      }
     }
 
-    // Towing shackles on the nose.
+    // ---- Spare track links across the nose --------------------------------
+    // Every Tiger crew carried them, and they are hung on the NOSE PLATE where
+    // they add armour, not laid flat on the glacis where they are invisible and
+    // do nothing. Six links on two welded brackets.
+    // z = 3.20 clears both plate faces: the driver's plate presents its surface
+    // at about 3.154 and the nose plate at about 3.171. Placed on the plates'
+    // centre lines — the obvious-looking numbers — they sit inside 100 mm of
+    // armour and cannot be seen at all, which is the same mistake that had every
+    // weld bead on this hull buried in the steel it was joining.
+    for (const [by, tilt] of [[1.12, -9], [0.86, 24]]) {
+      for (let i = 0; i < 6; i++) {
+        const lx = -1.35 + i * 0.54;
+        const link = box(0.50, 0.17, 0.09, M.track(), lx, by, 3.20);
+        link.rotation.x = tilt * DEG;
+        g.add(link);
+      }
+      const bar = box(3.34, 0.05, 0.05, M.hullDetail(), 0, by - 0.11, 3.19);
+      bar.rotation.x = tilt * DEG;
+      g.add(bar);
+    }
+
+    // ---- Towing shackles --------------------------------------------------
+    // A shackle is a U on a lug with a pin through it, not a block. These are
+    // large, they sit at the bottom corners of the nose, and they are one of
+    // the first things the eye finds on the front of a Tiger.
     for (const sx of [-1, 1]) {
-      g.add(box(0.10, 0.14, 0.16, M.steel(), sx * 1.30, 0.72, L.hullHalfL + 0.02));
+      const tx = sx * 1.34;
+      g.add(box(0.14, 0.20, 0.18, M.hullDetail(), tx, 0.70, 3.15));               // lug
+      const u = new THREE.Mesh(
+        new THREE.TorusGeometry(0.085, 0.026, lod === 0 ? 8 : 5, lod === 0 ? 14 : 8, Math.PI * 1.3),
+        M.steel());
+      u.position.set(tx, 0.70, 3.26);
+      u.rotation.set(0, Math.PI / 2, -Math.PI / 2);
+      g.add(u);
+      const pin = cyl(0.024, 0.024, 0.20, lod === 0 ? 10 : 6, M.steel(), tx, 0.70, 3.26);
+      pin.rotation.z = Math.PI / 2;
+      g.add(pin);
     }
+
+    // ---- Grab handles and lifting eyes ------------------------------------
+    if (lod === 0) {
+      for (const [hx, hy, hz] of [[-1.55, 1.79, 2.38], [1.55, 1.79, 2.38], [0, 1.79, 2.86]]) {
+        const hd = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.011, 5, 10, Math.PI), M.steel());
+        hd.position.set(hx, hy, hz);
+        hd.rotation.set(-0.28, 0, 0);
+        g.add(hd);
+      }
+    }
+
+    // ---- Weld beads on the front plate junctions --------------------------
+    // Sitting on the outer faces, not inside the armour.
+    const fw = (a, b) => { const w = weld(a, b, 0.026, lod); if (w) g.add(w); };
+    fw([-1.72, 1.775, 2.30], [1.72, 1.775, 2.30]);          // glacis to roof
+    fw([-1.74, 1.735, 2.90], [1.74, 1.735, 2.90]);          // glacis to driver's plate
+    fw([-1.74, 1.03, 3.115], [1.74, 1.03, 3.115]);          // driver's plate to nose
   }
   return g;
 }
@@ -1442,8 +1549,12 @@ function buildMarkings(lod, turmNummer) {
     // Turret sides. Wrapped onto the horseshoe: a flat plane laid on a 0.94 m
     // radius sinks 4 cm into the armour at its corners. Sits above the spare
     // track links (top at 2.04) and behind the smoke discharger bracket.
-    for (const th of [Math.PI / 2 + 0.42, -(Math.PI / 2 + 0.42)]) {
-      const d = MARK.curvedDecal(nummer, 0.955, 0.52, 0.26, th, 2.19, 0.06);
+    // Radius follows the turret: it was still wrapped at 0.955 m after the shell
+    // went out to 1.15 m, so the number was inside the armour and invisible.
+    // Size follows the photographs — 231 and 211 both run about 40 per cent of
+    // the turret side's height, where this was 24 per cent.
+    for (const th of [Math.PI / 2 + 0.30, -(Math.PI / 2 + 0.30)]) {
+      const d = MARK.curvedDecal(nummer, 1.162, 0.70, 0.30, th, 2.16, -0.06);
       if (d) g.add(d);
     }
   }
