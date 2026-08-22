@@ -1,118 +1,6 @@
 {
   "metresPerPixel": 0.005,
   "views": {
-    "front": {
-      "view": "front",
-      "width": 900,
-      "height": 800,
-      "metresPerPixel": 0.005,
-      "worldWidth": 4.5,
-      "worldHeight": 4,
-      "frustumCentre": [
-        0,
-        1.75,
-        0
-      ],
-      "originPx": [
-        450,
-        750
-      ],
-      "screenRight": [
-        1,
-        0,
-        0
-      ],
-      "screenUp": [
-        0,
-        1,
-        0
-      ],
-      "groundLinePx": 750
-    },
-    "rear": {
-      "view": "rear",
-      "width": 900,
-      "height": 800,
-      "metresPerPixel": 0.005,
-      "worldWidth": 4.5,
-      "worldHeight": 4,
-      "frustumCentre": [
-        0,
-        1.75,
-        0
-      ],
-      "originPx": [
-        450,
-        750
-      ],
-      "screenRight": [
-        -1,
-        0,
-        0
-      ],
-      "screenUp": [
-        0,
-        1,
-        0
-      ],
-      "groundLinePx": 750
-    },
-    "left": {
-      "view": "left",
-      "width": 1920,
-      "height": 800,
-      "metresPerPixel": 0.005,
-      "worldWidth": 9.6,
-      "worldHeight": 4,
-      "frustumCentre": [
-        0,
-        1.75,
-        0
-      ],
-      "originPx": [
-        959.9999999999993,
-        750
-      ],
-      "screenRight": [
-        0,
-        0,
-        -1
-      ],
-      "screenUp": [
-        0,
-        1,
-        0
-      ],
-      "groundLinePx": 750
-    },
-    "right": {
-      "view": "right",
-      "width": 1920,
-      "height": 800,
-      "metresPerPixel": 0.005,
-      "worldWidth": 9.6,
-      "worldHeight": 4,
-      "frustumCentre": [
-        0,
-        1.75,
-        0
-      ],
-      "originPx": [
-        960.0000000000007,
-        750
-      ],
-      "screenRight": [
-        0,
-        0,
-        1
-      ],
-      "screenUp": [
-        0,
-        1,
-        0
-      ],
-      "groundLinePx": 750
-    },
     "top": {
       "view": "top",
       "width": 900,
@@ -143,8 +31,8 @@
     }
   },
   "measurements": {
-    "triangles": 223282,
-    "meshes": 605,
+    "triangles": 223690,
+    "meshes": 601,
     "overall": {
       "min": [
         -1.8525,
@@ -199,12 +87,12 @@
         "min": [
           -0.9,
           1.763,
-          1.3554
+          1.1954
         ],
         "max": [
           0.9,
           2.4725,
-          2.2914
+          2.1314
         ],
         "size": [
           1.8,
@@ -214,7 +102,7 @@
         "centre": [
           0,
           2.1178,
-          1.8234
+          1.6634
         ]
       },
       "gun": {

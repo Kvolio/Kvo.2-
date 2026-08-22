@@ -43,7 +43,12 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false
 renderer.setPixelRatio(1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;   // measurement, not beauty
-renderer.shadowMap.enabled = false;
+// Shadows ON, and it matters: without them the plan view showed no turret at
+// all. Turret roof and hull roof are the same material, both face straight up,
+// and under flat light a 0.77 m step between them produces no tonal difference
+// whatsoever — the one view that settles where the turret sits was blank.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 
@@ -51,6 +56,12 @@ const scene = new THREE.Scene();
 // and a dramatic key light hides a proportion error behind a shadow.
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
 key.position.set(-6, 9, 7);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -7; key.shadow.camera.right = 7;
+key.shadow.camera.top = 7; key.shadow.camera.bottom = -7;
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 30;
+key.shadow.bias = -0.0004;
 scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 1.0);
 fill.position.set(7, 4, -6);
@@ -208,6 +219,7 @@ window.__ortho = {
 (async function init() {
   await TEX.warmup(() => {});
   tiger = buildTiger({ lod: 0 });
+  tiger.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(tiger);
   scene.background = new THREE.Color(0xb9bec4);
   window.__ortho.ready = true;

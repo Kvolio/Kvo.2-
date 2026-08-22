@@ -823,39 +823,69 @@ function buildTurret(lod) {
   const h = roofY - ringY;               // 0.77 m
   const midY = ringY + h / 2;
 
-  // The turret shell. The Tiger's turret is a near-cylinder at the back with a
-  // flat front plate, so it is built as a horseshoe of segments plus a front.
-  const outerR = 0.94;
-  const shell = new THREE.Mesh(
-    new THREE.CylinderGeometry(outerR, outerR, h, lod === 0 ? 28 : 14, 1, true,
-      Math.PI * 0.32, Math.PI * 1.36),
-    M.turret());
-  shell.position.set(0, midY, 0.06);
+  // THE TURRET SHELL.
+  //
+  // A Tiger turret is a HORSESHOE: one continuous wall running from the flat
+  // front plate down both parallel sides and round a large-radius rear, with
+  // the roof let into the top of it. Built as a cylinder segment with two
+  // straight boxes bolted on the front, it had a hard unchamfered crease where
+  // the curve met the slab and it read in plan as a rectangle with a cylinder
+  // stuck on — which is a large part of why the vehicle stopped reading as a
+  // Tiger past twenty metres.
+  //
+  // It is now one extruded profile with a real wall thickness, so there is no
+  // seam anywhere and the plan outline matches the drawing.
+  const WALL = 0.085;
+  const OUTER_R = 0.94;
+  const FRONT_Z = 1.24;
+
+  /**
+   * The turret's plan outline, inset by `inset` metres. Built with the shape's
+   * y running opposite to the vehicle's z, because the extrusion is turned a
+   * quarter turn to stand it up and that flips the axis.
+   */
+  const turretPlan = (inset) => {
+    const R = OUTER_R - inset;
+    const frontY = -(FRONT_Z - inset);
+    const sh = new THREE.Shape();
+    sh.moveTo(-R, frontY);
+    sh.lineTo(R, frontY);
+    sh.lineTo(R, -0.06);
+    sh.absarc(0, -0.06, R, 0, Math.PI, false);
+    sh.lineTo(-R, frontY);
+    return sh;
+  };
+
+  const shellShape = turretPlan(0);
+  shellShape.holes.push(new THREE.Path(turretPlan(WALL).getPoints(lod === 0 ? 64 : 28).reverse()));
+  const shellGeo = new THREE.ExtrudeGeometry(shellShape, {
+    depth: h, bevelEnabled: false, curveSegments: lod === 0 ? 32 : 14,
+  });
+  shellGeo.rotateX(-Math.PI / 2);
+  shellGeo.translate(0, ringY, 0);
+  const shell = new THREE.Mesh(shellGeo, M.turret());
   shell.castShadow = true; shell.receiveShadow = true;
   g.add(shell);
 
-  // Straight side walls forward of the horseshoe.
-  for (const sx of [-1, 1]) {
-    g.add(box(0.08, h, 1.12, M.turret(), sx * 0.92, midY, 0.62));
-  }
-  // The 100 mm front plate.
-  g.add(box(1.86, h, 0.10, M.turret(), 0, midY, 1.24));
-  // Roof, inset so it sits INSIDE the walls rather than overhanging them like
-  // a lid — a Tiger's roof plate is let into the turret shell, not laid on top.
-  const roof = new THREE.Mesh(
-    new THREE.CylinderGeometry(outerR - 0.05, outerR - 0.05, 0.045, lod === 0 ? 24 : 12,
-      1, false, Math.PI * 0.32, Math.PI * 1.36),
-    M.turret());
-  roof.position.set(0, roofY - 0.01, 0.06);
+  // Roof, let INTO the shell rather than laid on top of it like a lid.
+  const roofShape = turretPlan(WALL * 0.35);
+  const roofGeo = new THREE.ExtrudeGeometry(roofShape, {
+    depth: 0.045, bevelEnabled: false, curveSegments: lod === 0 ? 32 : 14,
+  });
+  roofGeo.rotateX(-Math.PI / 2);
+  roofGeo.translate(0, roofY - 0.045, 0);
+  const roof = new THREE.Mesh(roofGeo, M.turret());
   roof.castShadow = true; roof.receiveShadow = true;
   g.add(roof);
-  g.add(box(1.78, 0.045, 1.22, M.turret(), 0, roofY - 0.01, 0.62));
+
   if (lod < 2) {
-    // The weld line where the roof is let into the shell.
-    const rw = weld([-0.90, roofY - 0.03, 1.20], [0.90, roofY - 0.03, 1.20], 0.022, lod);
+    // The weld line where the roof is let into the shell, along the front and
+    // down both straight sides. The rear is a curve and takes its own bead.
+    const wy = roofY - 0.055;
+    const rw = weld([-0.90, wy, FRONT_Z - 0.03], [0.90, wy, FRONT_Z - 0.03], 0.022, lod);
     if (rw) g.add(rw);
     for (const sx of [-1, 1]) {
-      const sw = weld([sx * 0.90, roofY - 0.03, 1.20], [sx * 0.90, roofY - 0.03, -0.20], 0.022, lod);
+      const sw = weld([sx * 0.90, wy, FRONT_Z - 0.03], [sx * 0.90, wy, -0.06], 0.022, lod);
       if (sw) g.add(sw);
     }
   }
@@ -909,7 +939,9 @@ function buildTurret(lod) {
     arm.rotation.z = Math.PI / 2;
     mantlet.add(arm);
   }
-  mantlet.position.set(0, L.trunnionY, 1.36);
+  // Projecting about 0.31 m ahead of the turret front plate. At 1.36 it stood
+  // 0.47 m proud and read as a separate pod hung on the front of the turret.
+  mantlet.position.set(0, L.trunnionY, 1.20);
 
   if (lod < 2) {
     // The raised collar the tube passes through, standing proud of the face.
