@@ -141,7 +141,7 @@ export const M = {
 
   /** Road wheel tyres. Rubber-tyred wheels are a mid-1943 feature. */
   rubber: () => standard('rubber', () => TEX.rubber(),
-    { color: 0xffffff, roughness: 1, metalness: 0.0, normalScale: 0.7 }, 4, 0x1a1a1c),
+    { color: 0xffffff, roughness: 0.95, metalness: 0.0, normalScale: 0.7 }, 4, 0x2e2b28),
 
   // ---- Interior ---------------------------------------------------------
   /** Elfenbein — the ivory the fighting compartment was painted, for light. */

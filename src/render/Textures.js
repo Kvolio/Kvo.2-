@@ -356,10 +356,16 @@ export function trackSteel() {
 export function rubber() {
   return cached('rubber', (size) => {
     const albedo = generate(size, (x, y, u, v) => {
+      // Clean rubber sits near 5% reflectance, and at 0.055 the tyres rendered
+      // as black voids: at arm's length the road wheels read as pale discs
+      // inside heavy black rings, which is not what a Tiger's running gear
+      // looks like in any photograph. These tyres live in Russian dust, and
+      // dust is most of what the light comes back off. Base raised and the
+      // dust term given real weight.
       const g = fbm(u * 70, v * 70, 101, 3) * 0.05;
-      const dust = fbm(u * 6, v * 6, 103, 3) * 0.16;
-      const base = 0.055 + g;
-      return [base + dust * 0.45, base + dust * 0.40, base + dust * 0.32];
+      const dust = fbm(u * 6, v * 6, 103, 3) * 0.26;
+      const base = 0.085 + g;
+      return [base + dust * 0.62, base + dust * 0.55, base + dust * 0.43];
     });
     const normal = normalFromHeight(size, (x, y, u, v) => fbm(u * 110, v * 110, 101, 3), 0.9);
     const rough = generate(size, () => [0.94, 0.94, 0.94]);

@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { L, TIGER_1H } from '../data/tiger1h.js';
 import { M } from './Materials.js';
 import * as MARK from './Markings.js';
-import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const DEG = Math.PI / 180;
 
@@ -171,70 +171,73 @@ function plate(w, h, thickness, mtl, x, y, z, tiltX = 0, tiltY = 0, tiltZ = 0) {
  */
 function buildRoadWheel(lod, rimOnly = false) {
   const g = new THREE.Group();
-  const R = L.roadWheelDia / 2;              // 0.40 m
-  const seg = lod === 0 ? 20 : lod === 1 ? 12 : 8;
-  const tyreR = 0.040;                        // section radius of the rubber
-  const discR = R - tyreR;                    // steel goes to the inside of it
+  const seg = lod === 0 ? 22 : lod === 1 ? 14 : 8;
 
-  // Painted steel disc.
-  const disc = new THREE.Mesh(
-    new THREE.CylinderGeometry(discR, discR, 0.055, seg), M.wheel());
-  disc.rotation.z = Math.PI / 2;
-  g.add(disc);
+  // A Tiger road wheel is a PRESSED, DISHED STEEL DISC with a raised rim
+  // flange carrying a bonded rubber tyre. Built as a flat cylinder with a
+  // torus round it, it read at arm's length as painted cardboard: no dish, no
+  // rim, and the tyre lost against its own shadow. Both are lathed
+  // cross-sections now, so the wheel has a real profile and a silhouette that
+  // survives a close-up.
+  //
+  // Profiles are (radius, axial) with the axial coordinate running across the
+  // hull; the lathe is turned a quarter turn afterwards to put its axis on the
+  // axle. Overall diameter is 0.80 m, from docs/TIGER-CONFIGURATION.md.
+  const lathe = (pts, mat) => {
+    let geo = new THREE.LatheGeometry(
+      pts.map(([r, a]) => new THREE.Vector2(r, a)), seg);
+    geo = toCreasedNormals(geo, 35 * DEG);
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.z = Math.PI / 2;
+    m.castShadow = true; m.receiveShadow = true;
+    return m;
+  };
 
-  // The rubber tyre as a true ring on the rim. A TorusGeometry lies in the XY
-  // plane with its axis along Z, so it has to be turned to put its axis along
-  // the wheel's axle — otherwise it stands across the hull and the tank
-  // measures 3.84 m wide instead of 3.705 m.
-  const tyre = new THREE.Mesh(
-    new THREE.TorusGeometry(discR, tyreR, lod === 0 ? 8 : 5, seg), M.rubber());
-  tyre.rotation.y = Math.PI / 2;
-  g.add(tyre);
+  // Steel: hub boss, dished web, rim flange. Thicker at the hub, thinnest
+  // across the web, standing back out to the flange — which is what makes the
+  // light break across it instead of sliding over a flat plate.
+  g.add(lathe([
+    [0.062, -0.048], [0.112, -0.048], [0.122, -0.038], [0.200, -0.027],
+    [0.300, -0.021], [0.336, -0.031], [0.352, -0.044],
+    [0.352,  0.044], [0.336,  0.031], [0.300,  0.021], [0.200,  0.027],
+    [0.122,  0.038], [0.112,  0.048], [0.062,  0.048],
+  ], M.wheel()));
+
+  // Rubber: a flat-faced band with chamfered shoulders, standing proud of the
+  // flange. Not a doughnut — a Tiger tyre has a flat running face.
+  g.add(lathe([
+    [0.352, -0.045], [0.362, -0.050], [0.394, -0.050], [0.400, -0.041],
+    [0.400,  0.041], [0.394,  0.050], [0.362,  0.050], [0.352,  0.045],
+  ], M.rubber()));
 
   if (!rimOnly && lod < 2) {
-    // Hub cap, domed and proud of the disc face on both sides.
+    // Hub cap: a stepped cap with a domed crown, proud of the web on both
+    // faces. This is the single most legible thing on a road wheel at 1 m.
     for (const sx of [-1, 1]) {
-      const hub = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.052, 0.070, 0.030, seg), M.steel());
-      hub.rotation.z = Math.PI / 2;
-      hub.position.x = sx * 0.043;
-      g.add(hub);
-      const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(0.052, seg, 6, 0, Math.PI * 2, 0, Math.PI / 2), M.steel());
-      dome.rotation.z = sx * -Math.PI / 2;
-      dome.position.x = sx * 0.058;
-      g.add(dome);
+      g.add(lathe([
+        [0.000, sx * 0.086], [0.040, sx * 0.086], [0.058, sx * 0.078],
+        [0.064, sx * 0.062], [0.078, sx * 0.056], [0.078, sx * 0.046],
+        [0.062, sx * 0.046],
+      ], M.steel()));
     }
-    // The bolt circle that holds the wheel to its stub axle.
-    const bolts = lod === 0 ? 12 : 8;
-    const boltGeo = new THREE.CylinderGeometry(0.011, 0.011, 0.018, 6);
+    // The bolt ring holding the wheel to its stub axle, on both faces.
+    const bolts = lod === 0 ? 16 : 8;
+    const boltGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.020, 6);
     const boltMesh = new THREE.InstancedMesh(boltGeo, M.steel(), bolts * 2);
     const d = new THREE.Object3D();
     let i = 0;
     for (const sx of [-1, 1]) {
       for (let b = 0; b < bolts; b++) {
-        const a = (b / bolts) * Math.PI * 2;
-        d.position.set(sx * 0.038, Math.sin(a) * 0.290, Math.cos(a) * 0.290);
+        const a = (b / bolts) * Math.PI * 2 + (sx > 0 ? Math.PI / bolts : 0);
+        d.position.set(sx * 0.036, Math.sin(a) * 0.150, Math.cos(a) * 0.150);
         d.rotation.set(0, 0, Math.PI / 2);
         d.updateMatrix();
         boltMesh.setMatrixAt(i++, d.matrix);
       }
     }
     boltMesh.instanceMatrix.needsUpdate = true;
+    boltMesh.castShadow = true;
     g.add(boltMesh);
-
-    // A Tiger road wheel is a plain dished disc with a bolted rim — no
-    // lightening holes. The pressed rib between the hub and the rim is the only
-    // relief on it, and it catches the light as a soft step.
-    if (lod === 0) {
-      for (const sx of [-1, 1]) {
-        const rib = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.225, 0.235, 0.014, seg), M.wheel());
-        rib.rotation.z = Math.PI / 2;
-        rib.position.x = sx * 0.033;
-        g.add(rib);
-      }
-    }
   }
 
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -344,6 +347,64 @@ function buildRunningGear(side, lod) {
 }
 
 /**
+ * ONE TRACK LINK of the Kgs 63/725/130 combat track.
+ *
+ * A single box gave a track that read as a flat black band at any distance
+ * closer than twenty metres. A real link has a scalloped edge from its pin
+ * bosses, a grouser bar across the ground face, and the pin ends standing proud
+ * outboard — and those three things are what make a track look like a chain of
+ * castings rather than a strip of tape.
+ *
+ * Everything is merged into ONE geometry so the whole run is still a single
+ * instanced draw call. 725 mm wide, 130 mm pitch, from the configuration lock.
+ */
+function buildTrackLink(pitch, lod) {
+  const W = L.trackWidth;
+  const parts = [];
+  const add = (geo, x, y, z, rx = 0) => {
+    if (rx) geo.rotateX(rx);
+    geo.translate(x, y, z);
+    parts.push(geo);
+  };
+
+  // The link plate itself, slightly short of the pitch so the links read as
+  // separate pieces rather than as one extrusion.
+  // Narrower than the full 725 mm so the pin ends can stand proud of the plate
+  // and still finish flush with it: the published width over tracks is the
+  // OVERALL figure, pin heads included, and the tank measured 3.737 m the
+  // moment they were allowed outside it.
+  add(new THREE.BoxGeometry(W * 0.955, TRACK_THICKNESS * 0.62, pitch * 0.80), 0, 0, 0);
+
+  // The grouser bar across the ground face — the thing that bites.
+  add(new THREE.BoxGeometry(W * 0.92, TRACK_THICKNESS * 0.34, pitch * 0.30),
+    0, -TRACK_THICKNESS * 0.44, -pitch * 0.14);
+
+  if (lod < 2) {
+    const seg = lod === 0 ? 8 : 5;
+    // Pin bosses at the leading edge, the knuckles that interleave with the
+    // next link. Their axis runs across the track, on the pin's own line.
+    for (const bx of [-0.26, 0, 0.26]) {
+      const b = new THREE.CylinderGeometry(TRACK_THICKNESS * 0.30, TRACK_THICKNESS * 0.30, W * 0.20, seg);
+      b.rotateZ(Math.PI / 2);
+      b.translate(bx * W, 0, pitch * 0.42);
+      parts.push(b);
+    }
+    // Pin ends, proud of the outer edge. These are what give the track its
+    // scalloped silhouette in every photograph of a Tiger.
+    for (const sxx of [-1, 1]) {
+      const e = new THREE.CylinderGeometry(TRACK_THICKNESS * 0.34, TRACK_THICKNESS * 0.30, 0.018, seg);
+      e.rotateZ(Math.PI / 2);
+      e.translate(sxx * (W / 2 - 0.009), 0, pitch * 0.42);
+      parts.push(e);
+    }
+  }
+
+  const merged = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  return merged || new THREE.BoxGeometry(W, TRACK_THICKNESS, pitch * 0.94);
+}
+
+/**
  * The 725 mm Kgs 63/725/130 combat track, 96 links per side.
  *
  * Built as a genuine CLOSED LOOP, sampled at even arc length so every link is
@@ -425,7 +486,7 @@ function buildTrack(side, lod) {
   const linkPitch = lod === 0 ? 0.135 : lod === 1 ? 0.22 : 0.34;
   const linkCount = Math.max(12, Math.round(path.length / linkPitch));
 
-  const linkGeo = new THREE.BoxGeometry(L.trackWidth, TRACK_THICKNESS, linkPitch * 0.94);
+  const linkGeo = buildTrackLink(linkPitch, lod);
   const inst = new THREE.InstancedMesh(linkGeo, M.track(), linkCount);
   inst.castShadow = true;
   inst.receiveShadow = true;
