@@ -1055,12 +1055,14 @@ function buildHullSides(lod) {
   const g = new THREE.Group();
 
   // 80 mm superstructure sides — the Tiger's real weak spot, and it is flat.
+  // Run the full length, front plate to rear plate: they used to stop short at
+  // both ends and the hull had a gap in it.
   for (const sx of [-1, 1]) {
-    g.add(box(0.08, 0.78, 5.10, M.hull(), sx * L.hullHalfWU, 1.36, 0.20));
+    g.add(box(0.08, 0.78, 5.90, M.hull(), sx * L.hullHalfWU, 1.36, -0.21));
   }
-  // 60 mm lower tub sides.
+  // 60 mm lower tub sides, matching the tub they belong to.
   for (const sx of [-1, 1]) {
-    g.add(box(0.06, 0.56, 5.80, M.hullDark(), sx * L.hullHalfWL, 0.75, 0.10));
+    g.add(box(0.06, 0.56, L.hullLength - 0.30, M.hullDark(), sx * L.hullHalfWL, 0.75, 0));
   }
 
   if (lod < 2) {
@@ -1184,7 +1186,11 @@ export function buildTiger(opts = {}) {
   root.add(box(L.hullWidthLower, 0.05, L.hullLength - 0.30, M.hullDark(), 0, L.hullFloorY, 0));
 
   // ---- Superstructure box --------------------------------------------------
-  root.add(box(L.hullWidthUpper - 0.16, 0.78, 5.05, M.hull(), 0, 1.36, 0.18));
+  // Spans from the driver's plate all the way back to the rear plate. It was
+  // 5.05 m centred at +0.18, which stopped 0.8 m short of the back of the tank
+  // and left a hole you could see daylight through — invisible in every shaded
+  // render and obvious the moment the silhouette was rendered.
+  root.add(box(L.hullWidthUpper - 0.16, 0.78, 5.86, M.hull(), 0, 1.36, -0.226));
 
   // ---- Rear plate ----------------------------------------------------------
   // Positioned so the plate's OUTER FACE lands at exactly -L.hullHalfL, because

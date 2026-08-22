@@ -95,6 +95,13 @@ function toTexture(canvas) {
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
+  // The vehicle model is mirrored to make its frame right-handed (see
+  // buildTiger), and a mirror reverses text. Painted markings are the one thing
+  // on a tank that must not be mirrored, so the map is flipped back here: the
+  // turret number was rendering as "ƐƖS".
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.x = -1;
+  t.offset.x = 1;
   t.needsUpdate = true;
   return t;
 }
