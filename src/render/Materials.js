@@ -25,10 +25,24 @@ export const PANZER_BLACK = 0x232326;
 
 const cache = new Map();
 
-function build(key, fn) {
-  if (!cache.has(key)) cache.set(key, fn());
+/**
+ * Materials that live inside the tank. They must NOT be lit by the outdoor
+ * environment map: a sealed steel box does not reflect a July sky, and letting
+ * it do so made the fighting compartment brighter than the sky outside — which
+ * destroys the entire point of the hatch being a decision.
+ */
+const interiorKeys = new Set();
+
+function build(key, fn, opts = {}) {
+  if (!cache.has(key)) {
+    cache.set(key, fn());
+    if (opts.interior) interiorKeys.add(key);
+  }
   return cache.get(key);
 }
+
+/** Mark a material as belonging inside the tank. */
+function insideTank(key, m) { interiorKeys.add(key); return m; }
 
 /** Clone a texture set with a different tiling, without regenerating it. */
 function tiled(set, repeat) {
@@ -96,9 +110,18 @@ export const M = {
   cast: (repeat = 3) => standard('cast', () => TEX.castSteel(),
     { color: 0xffffff, roughness: 1, metalness: 0.32, normalScale: 1.3 }, repeat, 0x9d8b5e),
 
-  /** The gun tube — painted, but hotter and more worn than the hull. */
-  barrel: () => standard('barrel', () => TEX.paintedSteel({ wear: 0.85 }),
-    { color: 0xffffff, roughness: 1, metalness: 0.45, normalScale: 0.8 }, 4, 0x8f7d55),
+  /**
+   * The 8.8 cm tube. Painted the same Dunkelgelb as the hull in reality, but it
+   * must not RENDER the same: it is scoured, sooted at both ends and far more
+   * metallic than a hull plate, and without that difference the gun reads as an
+   * extrusion of the same beige slab.
+   */
+  barrel: () => standard('barrel', () => TEX.gunTube(),
+    { color: 0xffffff, roughness: 1, metalness: 0.62, normalScale: 0.9 }, 3, 0x776a4c),
+
+  /** The muzzle brake and breech end: bare, blued, heat-stained steel. */
+  gunSteel: () => standard('gunSteel', () => TEX.machinedMetal({ tint: [0.17, 0.16, 0.15] }),
+    { color: 0xffffff, roughness: 1, metalness: 0.88, normalScale: 1.0 }, 5, 0x24211e),
 
   /** Bare machined steel: breech, tools, pins, hinges. */
   steel: (repeat = 4) => standard('steel', () => TEX.machinedMetal(),
@@ -123,18 +146,25 @@ export const M = {
   // ---- Interior ---------------------------------------------------------
   /** Elfenbein — the ivory the fighting compartment was painted, for light. */
   interior: (repeat = 3) => build(`interior:${repeat}`, () => new THREE.MeshStandardMaterial({
-    color: INTERIOR_IVORY, roughness: 0.86, metalness: 0.06,
-  })),
+    color: INTERIOR_IVORY, roughness: 0.92, metalness: 0.02, envMapIntensity: 0.06,
+  }), { interior: true }),
   interiorLower: () => build('interiorLower', () => new THREE.MeshStandardMaterial({
-    color: INTERIOR_RED, roughness: 0.92, metalness: 0.08,
-  })),
-  interiorSteel: () => standard('interiorSteel', () => TEX.machinedMetal({ tint: [0.30, 0.30, 0.32] }),
-    { color: 0xffffff, roughness: 1, metalness: 0.80, normalScale: 0.8 }, 3, 0x6a6a6c),
+    color: INTERIOR_RED, roughness: 0.95, metalness: 0.04, envMapIntensity: 0.06,
+  }), { interior: true }),
+  /**
+   * Painted and oiled steel inside the turret. Metalness was 0.80, which turned
+   * every interior plate into a mirror for the sky. Real interior steel is
+   * painted, greasy and dull.
+   */
+  interiorSteel: () => insideTank('interiorSteel:3',
+    standard('interiorSteel', () => TEX.machinedMetal({ tint: [0.26, 0.26, 0.28] }),
+      { color: 0xffffff, roughness: 1, metalness: 0.35, normalScale: 0.7, envMapIntensity: 0.08 },
+      3, 0x53535a)),
 
-  /** Brass instrument bezels, shell cases, fittings. */
+  /** Brass instrument bezels, shell cases, fittings. Tarnished, not polished. */
   brass: () => build('brass', () => new THREE.MeshStandardMaterial({
-    color: 0xb08d3a, roughness: 0.32, metalness: 0.95,
-  })),
+    color: 0xa8853a, roughness: 0.46, metalness: 0.9, envMapIntensity: 0.18,
+  }), { interior: true }),
 
   /**
    * Laminated optic glass. Physical material so it gets a clearcoat and a
@@ -227,16 +257,23 @@ export function applyAnisotropy(max) {
   }
 }
 
-/** Give every material the scene environment so PBR has something to reflect. */
+/**
+ * Give every material the scene environment so PBR has something to reflect —
+ * except the ones inside the tank, which see almost none of it. A crewman in a
+ * buttoned-up Tiger is not standing under an open sky, and rendering him as if
+ * he were is what made the fighting compartment glow.
+ */
 export function applyEnvironment(envMap, intensity = 1) {
-  for (const m of cache.values()) {
-    if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
-      m.envMap = envMap;
-      m.envMapIntensity = intensity;
-      m.needsUpdate = true;
-    }
+  for (const [key, m] of cache.entries()) {
+    if (!(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) continue;
+    m.envMap = envMap;
+    m.envMapIntensity = interiorKeys.has(key) ? intensity * 0.07 : intensity;
+    m.needsUpdate = true;
   }
 }
+
+/** Is this material one of the fighting compartment's? */
+export function isInteriorMaterial(key) { return interiorKeys.has(key); }
 
 export function disposeAll() {
   for (const m of cache.values()) m.dispose?.();

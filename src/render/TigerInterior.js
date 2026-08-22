@@ -212,8 +212,18 @@ function buildLoaderStation() {
   return g;
 }
 
-/** The commander's own position: seat, cupola interior, vision blocks. */
-function buildCommanderStation() {
+/**
+ * The commander's own position: seat, cupola interior, vision blocks.
+ *
+ * The drum is built as FIVE SEPARATE WALL SEGMENTS with gaps between them, and
+ * laminated glass in the gaps. That matters: with a solid drum the commander
+ * could not see out at all and the buttoned-up view had to be faked with a
+ * screen-space letterbox, which reads as a television floating in a void rather
+ * than as being shut inside a steel drum. Built this way, the five slits are
+ * real openings, they sit at real bearings, and the fear of buttoning up comes
+ * from being enclosed rather than from a mask over the lens.
+ */
+function buildCommanderStation(lod) {
   const g = new THREE.Group();
   g.name = 'commander_station';
   const st = STATIONS.commander;
@@ -227,40 +237,111 @@ function buildCommanderStation() {
   g.userData.seat = pan;
   g.add(box(0.34, 0.30, 0.05, M.interiorSteel(), cx, st.seat[1] + 0.18, cz - 0.15));
 
-  // Cupola interior: the drum wall, and the five laminated glass vision blocks
-  // the commander actually looks through when he is buttoned up.
-  const drum = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.245, 0.245, L.cupolaTopY - L.turretRoofY, 20, 1, true),
-    M.interior());
-  drum.material.side = THREE.BackSide;
-  drum.position.set(cx, (L.turretRoofY + L.cupolaTopY) / 2, cz + 0.07);
+  // ---- The drum, as five arcs with slits between them ---------------------
+  const R = 0.245;
+  const H = L.cupolaTopY - L.turretRoofY;
+  const midY = (L.turretRoofY + L.cupolaTopY) / 2;
+  const cupZ = cz + 0.07;
+  const drum = new THREE.Group();
+  drum.name = 'cupola_drum';
+
+  const SLITS = 5;
+  const slitSpan = 22 * DEG;                 // angular width of each opening
+  const firstBearing = -130 * DEG;
+  const spacing = 65 * DEG;
+  const seg = lod === 0 ? 8 : 5;
+
+  // Wall segments fill everything that is not a slit.
+  const bearings = [];
+  for (let i = 0; i < SLITS; i++) bearings.push(firstBearing + i * spacing);
+
+  // three.js measures theta from +Z toward +X, and our bearings are the same,
+  // so a wall runs from the end of one slit to the start of the next.
+  const walls = [];
+  for (let i = 0; i <= SLITS; i++) {
+    const from = i === 0 ? bearings[0] - spacing + slitSpan / 2 : bearings[i - 1] + slitSpan / 2;
+    const to = i === SLITS ? bearings[SLITS - 1] + spacing - slitSpan / 2 : bearings[i] - slitSpan / 2;
+    walls.push([from, to - from]);
+  }
+  // Close the back of the drum, which has no slits.
+  walls.push([bearings[SLITS - 1] + slitSpan / 2, spacing * 2.0]);
+
+  for (const [start, length] of walls) {
+    if (length <= 0.01) continue;
+    const wall = new THREE.Mesh(
+      new THREE.CylinderGeometry(R, R, H, Math.max(3, Math.round(length / (12 * DEG))), 1, true,
+        start, length),
+      M.interiorSteel());
+    wall.material.side = THREE.DoubleSide;
+    wall.position.set(cx, midY, cupZ);
+    drum.add(wall);
+  }
+
+  // The armoured roof of the drum, which is what the hatch sits in.
+  const roof = new THREE.Mesh(
+    new THREE.CylinderGeometry(R + 0.02, R + 0.02, 0.04, lod === 0 ? 20 : 10), M.interiorSteel());
+  roof.position.set(cx, L.cupolaTopY - 0.02, cupZ);
+  drum.add(roof);
+
   g.add(drum);
-  // Hidden while the commander is buttoned up, because from inside the cupola he
-  // is looking THROUGH the vision blocks, not at the drum wall an inch from his face.
   g.userData.cupolaDrum = drum;
 
+  // ---- The laminated glass blocks in the slits ----------------------------
   const blocks = [];
-  for (let i = 0; i < 5; i++) {
-    const a = -130 * DEG + i * 65 * DEG;
-    const b = box(0.13, 0.045, 0.03, M.glass(),
-      cx + Math.sin(a) * 0.235, L.turretRoofY + 0.30, cz + 0.07 + Math.cos(a) * 0.235);
+  for (let i = 0; i < SLITS; i++) {
+    const a = bearings[i] + slitSpan / 2;      // centre of the opening
+    const w = 2 * R * Math.sin(slitSpan / 2);
+    const b = box(w, H * 0.30, 0.030, M.glass(),
+      cx + Math.sin(a) * R, midY + H * 0.10, cupZ + Math.cos(a) * R);
     b.rotation.y = a;
+    b.castShadow = false;
     g.add(b);
     blocks.push(b);
+
+    // The steel above and below each block, so the opening is a slit rather
+    // than a full-height gap.
+    for (const [dy, hh] of [[H * 0.32, H * 0.28], [-H * 0.26, H * 0.40]]) {
+      const fill = box(w + 0.01, hh, 0.028, M.interiorSteel(),
+        cx + Math.sin(a) * R, midY + H * 0.10 + dy, cupZ + Math.cos(a) * R);
+      fill.rotation.y = a;
+      drum.add(fill);
+    }
   }
   g.userData.visionBlocks = blocks;
 
   // The azimuth ring the commander reads to give the gunner a bearing.
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.20, 0.010, 6, 24), M.brass());
-  ring.position.set(cx, L.turretRoofY + 0.06, cz + 0.07);
+  ring.position.set(cx, L.turretRoofY + 0.06, cupZ);
   ring.rotation.x = Math.PI / 2;
   g.add(ring);
+  if (lod === 0) {
+    // Graduations on the ring, every ten degrees, so it can actually be read.
+    const marks = 36;
+    const markGeo = new THREE.BoxGeometry(0.006, 0.004, 0.022);
+    const inst = new THREE.InstancedMesh(markGeo, M.darkSteel(), marks);
+    const d = new THREE.Object3D();
+    for (let i = 0; i < marks; i++) {
+      const a = (i / marks) * Math.PI * 2;
+      d.position.set(cx + Math.sin(a) * 0.205, L.turretRoofY + 0.072, cupZ + Math.cos(a) * 0.205);
+      d.rotation.set(0, a, 0);
+      d.updateMatrix();
+      inst.setMatrixAt(i, d.matrix);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    g.add(inst);
+  }
 
-  // Headset and throat microphone hanging on their hook — the Bordsprechanlage.
+  // Headset and throat microphone on their hook — the Bordsprechanlage.
   g.add(box(0.10, 0.05, 0.03, M.darkSteel(), cx + 0.22, 2.30, cz - 0.16));
-
   // The commander's 6x30 binoculars in their case.
-  g.add(box(0.14, 0.10, 0.07, M.darkSteel(), cx - 0.20, 2.24, cz - 0.10));
+  g.add(box(0.14, 0.10, 0.07, M.leather(), cx - 0.20, 2.24, cz - 0.10));
+  // The grab rail he holds when the tank is moving.
+  if (lod === 0) {
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(0.10, 0.010, 5, 10, Math.PI), M.steel());
+    rail.position.set(cx + 0.20, L.turretRoofY - 0.10, cupZ);
+    rail.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+    g.add(rail);
+  }
 
   return g;
 }
@@ -443,7 +524,7 @@ export function buildInterior(opts = {}) {
   g.add(box(L.hullWidthUpper - 0.20, 0.03, 1.6, M.interior(), 0, L.hullRoofY - 0.03, 2.35));
 
   // ---- Stations ------------------------------------------------------------
-  const commander = buildCommanderStation();
+  const commander = buildCommanderStation(lod);
   const gunner = buildGunnerStation();
   const loader = buildLoaderStation();
   const breech = buildBreech();

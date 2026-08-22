@@ -201,8 +201,11 @@ export function paintedSteel(opts = {}) {
   const key = `painted:${tint.join(',')}:${wear}`;
   return cached(key, (size) => {
     const albedo = generate(size, (x, y, u, v) => {
-      // Rolling grain along the plate.
-      const grain = fbm(u * 34, v * 6, 11, 3) * 0.06;
+      // Paint tooth. This was a 34:6 anisotropic band, which made every plate
+      // on the tank look like light wood veneer — the whole vehicle read as a
+      // plywood mock-up. Rolled steel under sprayed paint has no visible
+      // directional grain at this scale; it has tooth and it has blotch.
+      const grain = fbm(u * 26, v * 26, 11, 3) * 0.045;
       // Broad paint mottle from spray application.
       const mottle = fbm(u * 5, v * 5, 23, 4) * 0.13 - 0.06;
       // Chipping: sparse, sharp, revealing primer.
@@ -225,7 +228,7 @@ export function paintedSteel(opts = {}) {
     });
 
     const normal = normalFromHeight(size, (x, y, u, v) => {
-      const grain = fbm(u * 34, v * 6, 11, 3) * 0.35;
+      const grain = fbm(u * 26, v * 26, 11, 3) * 0.30;
       const chip = ridged(u * 26, v * 26, 41, 3) > (1 - 0.13 * wear) ? 0.5 : 0;
       const tooth = fbm(u * 120, v * 120, 5, 2) * 0.12;
       return grain + chip + tooth;
@@ -276,19 +279,47 @@ export function castSteel(opts = {}) {
   });
 }
 
+/**
+ * A gun tube. Painted like the hull, but the paint burns off around the breech
+ * end and the whole thing is scoured and darker than a hull plate — which is
+ * what stops the 88 reading as an extruded piece of the same beige slab.
+ */
+export function gunTube() {
+  return cached('guntube', (size) => {
+    const albedo = generate(size, (x, y, u, v) => {
+      // Wear runs along the tube: heaviest at the muzzle and the breech end.
+      const ends = Math.max(Math.exp(-(v ** 2) / 0.02), Math.exp(-((1 - v) ** 2) / 0.03));
+      const scour = fbm(u * 40, v * 8, 311, 3);
+      const soot = fbm(u * 6, v * 12, 313, 4) * ends;
+      const base = 0.44 + scour * 0.07 - soot * 0.24;
+      return [base * 1.06, base * 0.96, base * 0.72];
+    });
+    const normal = normalFromHeight(size, (x, y, u, v) =>
+      fbm(u * 50, v * 12, 311, 3) * 0.6 + fbm(u * 120, v * 120, 317, 2) * 0.4, 1.0);
+    const rough = generate(size, (x, y, u, v) => {
+      const ends = Math.max(Math.exp(-(v ** 2) / 0.02), Math.exp(-((1 - v) ** 2) / 0.03));
+      const r = 0.58 + fbm(u * 10, v * 10, 319, 3) * 0.20 + ends * 0.16;
+      return [r, r, r];
+    });
+    return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
+  });
+}
+
 /** Bare machined metal — breech, gun tube interior, tools, track pins. */
 export function machinedMetal(opts = {}) {
   const tint = opts.tint || [0.42, 0.42, 0.44];
   return cached(`machined:${tint.join(',')}`, (size) => {
     const albedo = generate(size, (x, y, u, v) => {
-      const grain = ridged(u * 180, v * 3, 17, 2) * 0.10;
+      // Machining grain. The old 180:3 frequency ratio produced hard corduroy
+      // stripes rather than a turned finish; 90:14 reads as metal.
+      const grain = ridged(u * 90, v * 14, 17, 2) * 0.055;
       const dirt = fbm(u * 7, v * 7, 53, 4) * 0.14;
       return [tint[0] + grain - dirt * 0.5, tint[1] + grain - dirt * 0.5, tint[2] + grain - dirt * 0.45];
     });
     const normal = normalFromHeight(size, (x, y, u, v) =>
-      ridged(u * 180, v * 3, 17, 2) * 0.5 + fbm(u * 90, v * 90, 29, 2) * 0.1, 1.1);
+      ridged(u * 90, v * 14, 17, 2) * 0.35 + fbm(u * 90, v * 90, 29, 2) * 0.25, 0.9);
     const rough = generate(size, (x, y, u, v) => {
-      const r = 0.34 + fbm(u * 12, v * 12, 61, 3) * 0.22 + ridged(u * 180, v * 3, 17, 2) * 0.10;
+      const r = 0.42 + fbm(u * 12, v * 12, 61, 3) * 0.24 + ridged(u * 90, v * 14, 17, 2) * 0.08;
       return [r, r, r];
     });
     return { map: toTexture(albedo, { srgb: true }), normalMap: toTexture(normal), roughnessMap: toTexture(rough) };
@@ -563,7 +594,7 @@ export function textureStats() {
 
 /** Every material set, by name, so the warm-up knows what there is to build. */
 export const MATERIAL_SETS = {
-  paintedSteel, castSteel, machinedMetal, trackSteel, rubber,
+  paintedSteel, castSteel, machinedMetal, trackSteel, rubber, gunTube,
   canvasCloth, woolCloth, wood, dryEarth, ryeField, grassField,
   mudGround, dirtTrack, thatch, sovietGreen, fieldGrey, skin,
 };

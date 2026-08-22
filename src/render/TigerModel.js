@@ -48,11 +48,195 @@ function cyl(rTop, rBot, h, seg, mtl, x = 0, y = 0, z = 0) {
   return m;
 }
 
+/**
+ * A weld bead: a run of overlapping beads along a plate join.
+ *
+ * Every armour joint on a Tiger is a visible welded seam, often with a stepped
+ * or dovetailed interlock underneath it. Without them the hull is a set of
+ * featureless slabs, which is what made this model read as plywood rather than
+ * as a welded steel structure. They are cheap — one instanced mesh per run.
+ *
+ * @param {number[]} from  [x,y,z] start of the run
+ * @param {number[]} to    [x,y,z] end of the run
+ * @param {number} r       bead radius
+ * @param {number} lod
+ */
+function weld(from, to, r, lod) {
+  const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2];
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 0.05) return null;
+  const step = r * 1.5;
+  const n = Math.max(2, Math.round(len / step));
+  const geo = new THREE.SphereGeometry(r, lod === 0 ? 7 : 5, lod === 0 ? 5 : 3);
+  const inst = new THREE.InstancedMesh(geo, M.hullDetail(), n);
+  inst.castShadow = true;
+  inst.receiveShadow = true;
+  const d = new THREE.Object3D();
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    d.position.set(from[0] + dx * t, from[1] + dy * t, from[2] + dz * t);
+    // Beads are laid overlapping and slightly irregular, never uniform.
+    const wob = Math.sin(i * 2.7) * 0.16 + Math.cos(i * 1.3) * 0.1;
+    d.scale.set(1 + wob * 0.25, 0.62 + wob * 0.2, 1 + wob * 0.25);
+    d.updateMatrix();
+    inst.setMatrixAt(i, d.matrix);
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  return inst;
+}
+
+/**
+ * A row of bolt or rivet heads along a line — hatch rims, bracket plates,
+ * final-drive housings.
+ */
+function boltRow(from, to, count, r, lod) {
+  const geo = new THREE.CylinderGeometry(r, r, r * 1.1, 6);
+  const inst = new THREE.InstancedMesh(geo, M.steel(), count);
+  inst.castShadow = true;
+  const d = new THREE.Object3D();
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    d.position.set(
+      from[0] + (to[0] - from[0]) * t,
+      from[1] + (to[1] - from[1]) * t,
+      from[2] + (to[2] - from[2]) * t);
+    // Heads stand proud along the plate normal, which for these runs is X or Y.
+    d.rotation.set(0, 0, Math.abs(to[1] - from[1]) > Math.abs(to[0] - from[0]) ? Math.PI / 2 : 0);
+    d.updateMatrix();
+    inst.setMatrixAt(i, d.matrix);
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  return inst;
+}
+
+/**
+ * Every visible welded seam on the hull, as one group. Positions follow the
+ * plate layout in src/data/tiger1h.js, so the welds sit where the plates
+ * actually meet rather than where they look nice.
+ */
+function buildWelds(lod) {
+  const g = new THREE.Group();
+  g.name = 'welds';
+  const r = 0.028;
+  const add = (a, b) => { const w = weld(a, b, r, lod); if (w) g.add(w); };
+
+  const HW = L.hullHalfWU, HL = L.hullHalfL;
+  const roofY = L.hullRoofY, sponY = 0.97;
+
+  for (const sx of [-1, 1]) {
+    // Superstructure side to hull roof — the long seam down each sponson.
+    add([sx * HW, roofY, -HL + 0.1], [sx * HW, roofY, HL - 0.6]);
+    // Superstructure side to sponson floor.
+    add([sx * HW, sponY, -HL + 0.2], [sx * HW, sponY, 2.5]);
+    // Side plate to the driver's front plate, up the front corner.
+    add([sx * HW, sponY, 2.55], [sx * HW, roofY, 2.55]);
+    // Side plate to the rear plate.
+    add([sx * HW, sponY, -HL + 0.05], [sx * HW, roofY, -HL + 0.05]);
+  }
+  // Glacis to driver's plate, across the front.
+  add([-HW, 1.70, 2.60], [HW, 1.70, 2.60]);
+  // Glacis to hull roof.
+  add([-HW, roofY - 0.02, 2.30], [HW, roofY - 0.02, 2.30]);
+  // Nose plate to driver's plate.
+  add([-HW, 1.02, 3.06], [HW, 1.02, 3.06]);
+  // Rear plate to engine deck.
+  add([-HW, roofY - 0.02, -HL + 0.08], [HW, roofY - 0.02, -HL + 0.08]);
+  // Rear plate to lower rear plate.
+  add([-L.hullHalfWL, 0.90, -HL + 0.02], [L.hullHalfWL, 0.90, -HL + 0.02]);
+
+  return g;
+}
+
 /** A sloped plate: a thin box rotated about X by `angleFromVertical`. */
 function plate(w, h, thickness, mtl, x, y, z, tiltX = 0, tiltY = 0, tiltZ = 0) {
   const m = box(w, h, thickness, mtl, x, y, z);
   m.rotation.set(tiltX, tiltY, tiltZ);
   return m;
+}
+
+/**
+ * The interleaved Schachtellaufwerk. Eight torsion-bar stations per side,
+ * carrying 24 wheels per side in three overlapping ranks. This arrangement is
+ * the single most recognisable thing about a Tiger's running gear, and it is
+ * also why changing an inner road wheel took the crew half a day.
+ */
+/**
+ * One road wheel. A Tiger's wheel is a painted steel disc with a bolted hub and
+ * a RUBBER TYRE ON ITS RIM — not a rubber cylinder. Modelling the tyre as a
+ * full-width disc turned the whole running gear into one black slab and hid
+ * every wheel behind it, which is exactly what it must not do: the interleaved
+ * Schachtellaufwerk is the most recognisable thing about the vehicle.
+ */
+function buildRoadWheel(lod, rimOnly = false) {
+  const g = new THREE.Group();
+  const R = L.roadWheelDia / 2;              // 0.40 m
+  const seg = lod === 0 ? 20 : lod === 1 ? 12 : 8;
+  const tyreR = 0.040;                        // section radius of the rubber
+  const discR = R - tyreR;                    // steel goes to the inside of it
+
+  // Painted steel disc.
+  const disc = new THREE.Mesh(
+    new THREE.CylinderGeometry(discR, discR, 0.055, seg), M.wheel());
+  disc.rotation.z = Math.PI / 2;
+  g.add(disc);
+
+  // The rubber tyre as a true ring on the rim. A TorusGeometry lies in the XY
+  // plane with its axis along Z, so it has to be turned to put its axis along
+  // the wheel's axle — otherwise it stands across the hull and the tank
+  // measures 3.84 m wide instead of 3.705 m.
+  const tyre = new THREE.Mesh(
+    new THREE.TorusGeometry(discR, tyreR, lod === 0 ? 8 : 5, seg), M.rubber());
+  tyre.rotation.y = Math.PI / 2;
+  g.add(tyre);
+
+  if (!rimOnly && lod < 2) {
+    // Hub cap, domed and proud of the disc face on both sides.
+    for (const sx of [-1, 1]) {
+      const hub = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.052, 0.070, 0.030, seg), M.steel());
+      hub.rotation.z = Math.PI / 2;
+      hub.position.x = sx * 0.043;
+      g.add(hub);
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.052, seg, 6, 0, Math.PI * 2, 0, Math.PI / 2), M.steel());
+      dome.rotation.z = sx * -Math.PI / 2;
+      dome.position.x = sx * 0.058;
+      g.add(dome);
+    }
+    // The bolt circle that holds the wheel to its stub axle.
+    const bolts = lod === 0 ? 12 : 8;
+    const boltGeo = new THREE.CylinderGeometry(0.011, 0.011, 0.018, 6);
+    const boltMesh = new THREE.InstancedMesh(boltGeo, M.steel(), bolts * 2);
+    const d = new THREE.Object3D();
+    let i = 0;
+    for (const sx of [-1, 1]) {
+      for (let b = 0; b < bolts; b++) {
+        const a = (b / bolts) * Math.PI * 2;
+        d.position.set(sx * 0.038, Math.sin(a) * 0.290, Math.cos(a) * 0.290);
+        d.rotation.set(0, 0, Math.PI / 2);
+        d.updateMatrix();
+        boltMesh.setMatrixAt(i++, d.matrix);
+      }
+    }
+    boltMesh.instanceMatrix.needsUpdate = true;
+    g.add(boltMesh);
+
+    // A Tiger road wheel is a plain dished disc with a bolted rim — no
+    // lightening holes. The pressed rib between the hub and the rim is the only
+    // relief on it, and it catches the light as a soft step.
+    if (lod === 0) {
+      for (const sx of [-1, 1]) {
+        const rib = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.225, 0.235, 0.014, seg), M.wheel());
+        rib.rotation.z = Math.PI / 2;
+        rib.position.x = sx * 0.033;
+        g.add(rib);
+      }
+    }
+  }
+
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
 }
 
 /**
@@ -75,19 +259,16 @@ function buildRunningGear(side, lod) {
   const first = L.trackContact / 2 - 0.30;
   const spacing = (L.trackContact - 0.60) / (stations - 1);
 
-  // Three ranks at different lateral offsets — that is the interleaving.
-  // Three overlapping ranks. The outer rank sits proud of the track's inner
-  // face so the interleaving actually reads from the side, which is the single
-  // most recognisable thing about a Tiger's running gear.
-  const rankOffsets = lod === 0 ? [1.18, 1.36, 1.54] : lod === 1 ? [1.22, 1.50] : [1.40];
-  const wheelSeg = lod === 0 ? 20 : lod === 1 ? 12 : 8;
+  // Three ranks, outermost last so it draws over the ones behind it. The outer
+  // rank is nearly flush with the track's inner face, which is what gives a
+  // Tiger its solid wall of overlapping wheels.
+  const rankOffsets = lod === 0 ? [1.14, 1.33, 1.52] : lod === 1 ? [1.20, 1.48] : [1.42];
 
-  const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.10, wheelSeg);
-  wheelGeo.rotateZ(Math.PI / 2);
-  const tyreGeo = new THREE.CylinderGeometry(wheelR + 0.005, wheelR + 0.005, 0.075, wheelSeg);
-  tyreGeo.rotateZ(Math.PI / 2);
-
+  // One wheel is built and then instanced by cloning its group, because a
+  // Tiger has forty-eight of them and they are all identical.
+  const template = buildRoadWheel(lod);
   const wheels = [];
+
   for (let r = 0; r < rankOffsets.length; r++) {
     // Ranks are staggered by half a station, which is what makes them interleave.
     const offset = (r % 2) * spacing * 0.5;
@@ -95,41 +276,56 @@ function buildRunningGear(side, lod) {
     for (let i = 0; i < count; i++) {
       const z = first - i * spacing - offset;
       if (Math.abs(z) > L.trackContact / 2 + 0.2) continue;
-      const disc = new THREE.Mesh(wheelGeo, M.wheel());
-      disc.position.set(sx * rankOffsets[r], axleY, z);
-      disc.castShadow = true;
-      g.add(disc);
-      // Rubber tyre — deleted from production in early 1944, present here.
-      const tyre = new THREE.Mesh(tyreGeo, M.rubber());
-      tyre.position.copy(disc.position);
-      tyre.position.x += sx * 0.014;
-      g.add(tyre);
-      wheels.push(disc);
+      const w = template.clone();
+      w.position.set(sx * rankOffsets[r], axleY, z);
+      g.add(w);
+      wheels.push(w);
+    }
+  }
+
+  // Torsion-bar swing arms, visible between the wheels on the inner rank.
+  if (lod < 2) {
+    for (let i = 0; i < stations; i++) {
+      const z = first - i * spacing;
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.13, 0.30), M.hullDetail());
+      arm.position.set(sx * 1.02, axleY + 0.04, z + 0.14);
+      arm.rotation.x = -0.25;
+      arm.castShadow = true;
+      g.add(arm);
     }
   }
 
   // Drive sprocket, front. Toothed ring, drives the track.
   const sprocketR = L.sprocketDia / 2;
   const sprocket = new THREE.Group();
-  const hub = cyl(sprocketR * 0.55, sprocketR * 0.55, 0.16, lod === 0 ? 18 : 10, M.steel());
+  const hub = cyl(sprocketR * 0.42, sprocketR * 0.42, 0.20, lod === 0 ? 18 : 10, M.steel());
   hub.rotation.z = Math.PI / 2;
   sprocket.add(hub);
+  // The two toothed rings a Tiger sprocket actually has, with the track running
+  // between them.
   if (lod < 2) {
     const teeth = lod === 0 ? 18 : 10;
-    for (let i = 0; i < teeth; i++) {
-      const a = (i / teeth) * Math.PI * 2;
-      const t = box(0.14, 0.10, 0.07, M.steel(),
-        0, Math.sin(a) * sprocketR * 0.86, Math.cos(a) * sprocketR * 0.86);
-      t.rotation.x = -a;
-      sprocket.add(t);
+    for (const ringX of [-0.09, 0.09]) {
+      const ring = cyl(sprocketR * 0.68, sprocketR * 0.68, 0.035, lod === 0 ? 20 : 12, M.steel());
+      ring.rotation.z = Math.PI / 2;
+      ring.position.x = ringX;
+      sprocket.add(ring);
+      for (let i = 0; i < teeth; i++) {
+        const a = (i / teeth) * Math.PI * 2;
+        const t = box(0.05, 0.13, 0.08, M.steel(),
+          ringX, Math.sin(a) * sprocketR * 0.84, Math.cos(a) * sprocketR * 0.84);
+        t.rotation.x = -a;
+        sprocket.add(t);
+      }
     }
   }
   sprocket.position.set(sx * 1.30, SPROCKET_Y, L.hullHalfL - 0.42);
+  sprocket.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.add(sprocket);
 
-  // Idler, rear, with the track tensioner.
-  const idler = cyl(0.33, 0.33, 0.14, lod === 0 ? 16 : 8, M.wheel());
-  idler.rotation.z = Math.PI / 2;
+  // Idler, rear, with the track tensioner. Dished, like the road wheels.
+  const idler = buildRoadWheel(lod, true);
+  idler.scale.setScalar(0.84);
   idler.position.set(sx * 1.30, IDLER_Y, -(L.hullHalfL - 0.34));
   g.add(idler);
 
@@ -141,100 +337,121 @@ function buildRunningGear(side, lod) {
 
 /**
  * The 725 mm Kgs 63/725/130 combat track, 96 links per side.
- * Drawn as an instanced belt around the running gear so it costs one draw call.
+ *
+ * Built as a genuine CLOSED LOOP, sampled at even arc length so every link is
+ * the same distance from its neighbours and every one of them sits on the path.
+ * The previous version wrapped the sprocket and idler at radii that did not
+ * meet the straight runs, so a dozen links flew off into the air in front of
+ * the hull — the single most obviously broken thing on the vehicle.
  */
+function trackPath() {
+  const wheelR = L.roadWheelDia / 2;
+  const axleY = wheelR + TRACK_THICKNESS;
+  const sprocketR = L.sprocketDia / 2 + TRACK_THICKNESS;
+  const idlerR = 0.34 + TRACK_THICKNESS;
+  const frontZ = L.hullHalfL - 0.42;
+  const rearZ = -(L.hullHalfL - 0.34);
+  const groundY = TRACK_THICKNESS / 2;
+  const topY = axleY + wheelR + TRACK_THICKNESS;
+  const contactFront = L.trackContact / 2;
+  const contactRear = -L.trackContact / 2;
+
+  const pts = [];
+  const arc = (cz, cy, r, a0, a1, steps) => {
+    for (let i = 0; i <= steps; i++) {
+      const a = a0 + (a1 - a0) * (i / steps);
+      pts.push({ z: cz + Math.sin(a) * r, y: cy + Math.cos(a) * r });
+    }
+  };
+
+  // Over the top of the drive sprocket, from its front tangent to its top.
+  arc(frontZ, SPROCKET_Y, sprocketR, Math.PI / 2, 0, 8);
+  // Top run, back over the road wheels, sagging between the return points.
+  const topSteps = 16;
+  for (let i = 1; i <= topSteps; i++) {
+    const t = i / topSteps;
+    pts.push({ z: frontZ + (rearZ - frontZ) * t, y: topY - Math.sin(t * Math.PI * 4) * 0.022 });
+  }
+  // Over the idler and down its back face.
+  arc(rearZ, IDLER_Y, idlerR, 0, -Math.PI, 8);
+  // Along the ground, forward.
+  const botSteps = 18;
+  for (let i = 1; i <= botSteps; i++) {
+    const t = i / botSteps;
+    pts.push({ z: contactRear + (contactFront - contactRear) * t, y: groundY });
+  }
+  // Up the front face of the sprocket, closing the loop.
+  arc(frontZ, SPROCKET_Y, sprocketR, Math.PI, Math.PI / 2, 8);
+
+  const segments = [];
+  let length = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const d = Math.hypot(b.z - a.z, b.y - a.y);
+    segments.push({ a, b, d, at: length });
+    length += d;
+  }
+  return { segments, length };
+}
+
+function sampleTrack(path, distance) {
+  const d = ((distance % path.length) + path.length) % path.length;
+  for (const seg of path.segments) {
+    if (d <= seg.at + seg.d) {
+      const t = seg.d < 1e-6 ? 0 : (d - seg.at) / seg.d;
+      return {
+        z: seg.a.z + (seg.b.z - seg.a.z) * t,
+        y: seg.a.y + (seg.b.y - seg.a.y) * t,
+        rot: Math.atan2(seg.b.y - seg.a.y, seg.b.z - seg.a.z),
+      };
+    }
+  }
+  const last = path.segments[path.segments.length - 1];
+  return { z: last.b.z, y: last.b.y, rot: 0 };
+}
+
 function buildTrack(side, lod) {
   const sx = side;
-  const linkCount = lod === 0 ? 62 : lod === 1 ? 40 : 24;
-  const linkGeo = new THREE.BoxGeometry(L.trackWidth, TRACK_THICKNESS, 0.24);
+  const path = trackPath();
+  const linkPitch = lod === 0 ? 0.135 : lod === 1 ? 0.22 : 0.34;
+  const linkCount = Math.max(12, Math.round(path.length / linkPitch));
+
+  const linkGeo = new THREE.BoxGeometry(L.trackWidth, TRACK_THICKNESS, linkPitch * 0.94);
   const inst = new THREE.InstancedMesh(linkGeo, M.track(), linkCount);
   inst.castShadow = true;
   inst.receiveShadow = true;
   inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-  // The track path: an elongated loop around sprocket, idler and road wheels.
-  const wheelR = L.roadWheelDia / 2;
-  const axleY = wheelR + TRACK_THICKNESS;
-  const frontZ = L.hullHalfL - 0.42;
-  const rearZ = -(L.hullHalfL - 0.34);
-  // The Tiger has no separate return rollers: the top run rides on the tops of
-  // the outer road wheels, which is why it sags between them.
-  const topY = axleY + wheelR + TRACK_THICKNESS;
-  const botY = TRACK_THICKNESS / 2;
-
-  const path = [];
-  const straightTop = Math.round(linkCount * 0.30);
-  const straightBot = Math.round(linkCount * 0.34);
-  const nose = Math.round((linkCount - straightTop - straightBot) / 2);
-
-  // Top run (sprocket -> idler), sagging slightly between return rollers.
-  for (let i = 0; i < straightTop; i++) {
-    const t = i / (straightTop - 1);
-    const z = frontZ + (rearZ - frontZ) * t;
-    const sag = Math.sin(t * Math.PI * 3) * 0.028;
-    path.push({ z, y: topY - sag, rot: 0 });
-  }
-  // Around the idler.
-  const idlerR = 0.36;
-  for (let i = 0; i < nose; i++) {
-    const a = (i / nose) * Math.PI;
-    path.push({ z: rearZ - Math.sin(a) * idlerR, y: IDLER_Y + Math.cos(a) * idlerR, rot: -a });
-  }
-  // Bottom run (idler -> sprocket), flat on the ground.
-  for (let i = 0; i < straightBot; i++) {
-    const t = i / (straightBot - 1);
-    path.push({ z: rearZ + (frontZ - rearZ) * t, y: botY, rot: 0 });
-  }
-  // Around the sprocket.
-  const sprocketR = L.sprocketDia / 2 + 0.02;
-  for (let i = 0; i < nose; i++) {
-    const a = (i / nose) * Math.PI;
-    path.push({ z: frontZ + Math.sin(a) * sprocketR, y: SPROCKET_Y - Math.cos(a) * sprocketR, rot: a });
-  }
-
   const dummy = new THREE.Object3D();
-  for (let i = 0; i < linkCount; i++) {
-    const p = path[i % path.length];
-    dummy.position.set(sx * 1.49, p.y, p.z);
-    dummy.rotation.set(p.rot, 0, 0);
-    dummy.updateMatrix();
-    inst.setMatrixAt(i, dummy.matrix);
-  }
-  inst.instanceMatrix.needsUpdate = true;
-  inst.userData = { path, sx, linkCount, offset: 0 };
-  return inst;
-}
-
-/**
- * The outer face of the track run: the flat band of link edges you actually see
- * from the side of a Tiger, with the horns of the guide teeth above it.
- */
-function buildTrackFace(side, lod) {
-  const g = new THREE.Group();
-  const sx = side;
-  const x = sx * (1.49 + L.trackWidth / 2 - 0.01);
-  const axleY = L.roadWheelDia / 2 + TRACK_THICKNESS;
-  const len = L.trackContact;
-  // Bottom run, on the ground.
-  const bottom = new THREE.Mesh(new THREE.BoxGeometry(0.02, TRACK_THICKNESS * 1.4, len), M.track());
-  bottom.position.set(x, TRACK_THICKNESS / 2, 0);
-  g.add(bottom);
-  // Top run, over the wheels.
-  const top = new THREE.Mesh(new THREE.BoxGeometry(0.02, TRACK_THICKNESS * 1.4, len * 0.92), M.track());
-  top.position.set(x, axleY + L.roadWheelDia / 2 + TRACK_THICKNESS, 0);
-  g.add(top);
-  if (lod < 2) {
-    // Guide horns along the outer edge.
-    const n = lod === 0 ? 16 : 9;
-    for (let i = 0; i < n; i++) {
-      const z = -len / 2 + (i / (n - 1)) * len;
-      const horn = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.06), M.track());
-      horn.position.set(x, TRACK_THICKNESS + 0.02, z);
-      g.add(horn);
+  const place = (mesh, yOffset) => {
+    for (let i = 0; i < linkCount; i++) {
+      const p = sampleTrack(path, i * linkPitch);
+      dummy.position.set(sx * 1.49, p.y + yOffset, p.z);
+      dummy.rotation.set(-p.rot, 0, 0);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
     }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  place(inst, 0);
+
+  // Guide horns: they stand between the two halves of the sprocket, and they
+  // are what actually keeps a Tiger's track on.
+  let horns = null;
+  if (lod < 2) {
+    const hornGeo = new THREE.BoxGeometry(0.055, 0.075, linkPitch * 0.5);
+    horns = new THREE.InstancedMesh(hornGeo, M.track(), linkCount);
+    horns.castShadow = true;
+    horns.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    place(horns, 0.058);
   }
-  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return g;
+
+  const group = new THREE.Group();
+  group.add(inst);
+  if (horns) group.add(horns);
+  group.userData = { links: inst, horns, path, sx, linkCount, linkPitch, offset: 0 };
+  return group;
 }
 
 /** The engine deck: armoured louvres, radiator hatches, and the crew's stowage. */
@@ -448,17 +665,54 @@ function buildTurret(lod) {
     0, 0, barrelStart + barrelLen / 2);
   barrel.rotation.x = Math.PI / 2;
   gunGroup.add(barrel);
-  // The double-baffle muzzle brake.
-  const brake = cyl(0.105, 0.105, BRAKE_LEN, lod === 0 ? 14 : 8, M.darkSteel(),
-    0, 0, barrelEnd + BRAKE_LEN / 2);
-  brake.rotation.x = Math.PI / 2;
-  gunGroup.add(brake);
-  if (lod < 2) {
-    // The two baffle slots.
-    for (const z of [barrelEnd + 0.09, barrelEnd + 0.21]) {
-      gunGroup.add(box(0.24, 0.055, 0.04, M.darkSteel(), 0, 0, z));
+  // ---- The double-baffle muzzle brake ------------------------------------
+  // The Tiger's silhouette signature, and it has to be real geometry: a mount
+  // collar, two chambers with open ports out of each side, and an end cap. A
+  // plain black cylinder made the 88 read as any long-barrelled gun.
+  const brake = new THREE.Group();
+  const seg = lod === 0 ? 16 : 9;
+  const bz = barrelEnd;
+
+  // Mount collar where it screws onto the tube.
+  const collar = cyl(0.098, 0.098, 0.055, seg, M.gunSteel(), 0, 0, bz + 0.028);
+  collar.rotation.x = Math.PI / 2;
+  brake.add(collar);
+
+  // Two baffle chambers separated by a web, with the ports cut out of the sides.
+  const chamberLen = (BRAKE_LEN - 0.075) / 2;
+  for (let c = 0; c < 2; c++) {
+    const z0 = bz + 0.055 + c * (chamberLen + 0.015);
+    // The chamber walls: top and bottom slabs joined by the baffle web, so the
+    // sides are genuinely open rather than being a decal on a cylinder.
+    for (const dy of [1, -1]) {
+      brake.add(box(0.215, 0.032, chamberLen, M.gunSteel(), 0, dy * 0.083, z0 + chamberLen / 2));
+    }
+    // The baffle plate itself, with the bore through it.
+    const baffle = new THREE.Mesh(
+      new THREE.RingGeometry(0.048, 0.107, seg), M.gunSteel());
+    baffle.position.set(0, 0, z0 + chamberLen);
+    brake.add(baffle);
+    if (lod === 0) {
+      // The port cheeks, angled back the way the gases actually leave.
+      for (const sx of [-1, 1]) {
+        const cheek = box(0.026, 0.17, chamberLen * 0.8, M.gunSteel(),
+          sx * 0.104, 0, z0 + chamberLen * 0.45);
+        cheek.rotation.y = sx * 0.14;
+        brake.add(cheek);
+      }
     }
   }
+
+  // The bore running through the whole brake, and the end cap.
+  const bore = cyl(0.050, 0.050, BRAKE_LEN, seg, M.gunSteel(), 0, 0, bz + BRAKE_LEN / 2);
+  bore.rotation.x = Math.PI / 2;
+  brake.add(bore);
+  const cap = new THREE.Mesh(new THREE.RingGeometry(0.050, 0.112, seg), M.gunSteel());
+  cap.position.set(0, 0, bz + BRAKE_LEN);
+  brake.add(cap);
+
+  brake.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  gunGroup.add(brake);
   gunGroup.userData.muzzleLocalZ = muzzleLocalZ;
   g.add(gunGroup);
   g.userData.gun = gunGroup;
@@ -500,14 +754,25 @@ function buildTurret(lod) {
 
   // ---- Turret sides -------------------------------------------------------
   if (lod < 2) {
-    // Smoke candle dischargers, three per side. Deletion was ordered around
-    // June 1943 after they caused fires; 503's Tigers still carried them.
+    // Smoke candle dischargers, three per side, on a common bracket. Deletion
+    // was ordered around June 1943 after they caused fires; 503's Tigers still
+    // carried them. They must stand PROUD of the turret side — modelled flush
+    // they read as three black holes punched through the armour.
     for (const sx of [-1, 1]) {
+      const bracket = box(0.05, 0.10, 0.44, M.hullDetail(), sx * 0.95, L.trunnionY + 0.26, 0.50);
+      g.add(bracket);
       for (let i = 0; i < 3; i++) {
-        const t = cyl(0.033, 0.033, 0.16, 8, M.darkSteel(),
-          sx * 0.96, L.trunnionY + 0.30, 0.62 - i * 0.14);
-        t.rotation.z = sx * 22 * DEG;
-        g.add(t);
+        const z = 0.64 - i * 0.14;
+        const tube = cyl(0.036, 0.036, 0.19, lod === 0 ? 10 : 6, M.gunSteel(),
+          sx * 1.05, L.trunnionY + 0.34, z);
+        tube.rotation.z = sx * 26 * DEG;
+        g.add(tube);
+        // The cap on top of each candle.
+        const capY = L.trunnionY + 0.34 + Math.cos(26 * DEG) * 0.10;
+        const cap = cyl(0.040, 0.040, 0.022, lod === 0 ? 10 : 6, M.steel(),
+          sx * (1.05 + Math.sin(26 * DEG) * 0.10), capY, z);
+        cap.rotation.z = sx * 26 * DEG;
+        g.add(cap);
       }
     }
     // Spare track links hung on the turret sides — every Tiger crew did this.
@@ -633,25 +898,49 @@ function buildHullSides(lod) {
   }
 
   if (lod < 2) {
-    // Hinged fenders over the tracks.
+    // Hinged fenders, sitting just clear of the top run of track and covering
+    // its full width — which is what stops a Tiger throwing mud over its own
+    // engine deck, and what hides the top run from the side.
+    const fenderY = L.roadWheelDia / 2 + TRACK_THICKNESS * 2 + L.roadWheelDia / 2 + 0.08;
     for (const sx of [-1, 1]) {
       for (let i = 0; i < 4; i++) {
-        const z = 2.30 - i * 1.55;
-        const f = box(0.62, 0.03, 1.45, M.hullDark(), sx * 1.52, L.sponsonFloorY + 0.42, z);
+        const z = 2.36 - i * 1.56;
+        const f = box(0.73, 0.025, 1.50, M.hullDetail(), sx * 1.485, fenderY, z);
         g.add(f);
+        // The turned-down outer lip, flush with the outer face of the track so
+        // the vehicle still measures 3.705 m over the tracks.
+        const lip = box(0.022, 0.10, 1.50, M.hullDetail(), sx * 1.842, fenderY - 0.05, z);
+        g.add(lip);
+        // Hinge knuckles where the fender folds up against the hull.
+        for (const hz of [-0.55, 0.55]) {
+          g.add(cyl(0.028, 0.028, 0.10, 6, M.steel(), sx * 1.12, fenderY + 0.01, z + hz)
+            .rotateZ(Math.PI / 2));
+        }
       }
     }
-    // Two 30 mm tow cables coiled along the hull sides.
+    // The two 30 mm tow cables. A Tiger carried them clipped flat along the
+    // sponson sides with the eyes at each end, not coiled into a hoop.
     for (const sx of [-1, 1]) {
-      const cable = new THREE.Mesh(
-        new THREE.TorusGeometry(0.30, 0.022, 6, lod === 0 ? 14 : 8), M.darkSteel());
-      cable.rotation.y = Math.PI / 2;
-      cable.position.set(sx * (L.hullHalfWU + 0.04), 1.10, -1.30);
-      g.add(cable);
-      // The run of cable along the sponson.
-      const run = cyl(0.020, 0.020, 2.10, 6, M.darkSteel(), sx * (L.hullHalfWU + 0.04), 1.02, 0.30);
-      run.rotation.x = Math.PI / 2;
-      g.add(run);
+      const x = sx * (L.hullHalfWU + 0.035);
+      // The straight run, with a slight sag between its clips.
+      for (let i = 0; i < 3; i++) {
+        const z = 1.35 - i * 1.35;
+        const run = cyl(0.018, 0.018, 1.30, lod === 0 ? 8 : 5, M.darkSteel(), x, 1.06 - (i === 1 ? 0.015 : 0), z);
+        run.rotation.x = Math.PI / 2;
+        g.add(run);
+      }
+      // Cable eyes, spliced at both ends.
+      for (const z of [2.02, -2.02]) {
+        const eye = new THREE.Mesh(
+          new THREE.TorusGeometry(0.075, 0.020, 6, lod === 0 ? 14 : 8), M.steel());
+        eye.rotation.y = Math.PI / 2;
+        eye.position.set(x, 1.06, z);
+        g.add(eye);
+      }
+      // The clips that hold it to the hull.
+      for (const z of [1.9, 0.65, -0.65, -1.9]) {
+        g.add(box(0.05, 0.09, 0.05, M.steel(), sx * (L.hullHalfWU - 0.01), 1.06, z));
+      }
     }
     // Cleaning rod tube on the left fender.
     const tube = cyl(0.045, 0.045, 1.65, 8, M.steel(), -1.52, L.sponsonFloorY + 0.50, -0.60);
@@ -682,6 +971,7 @@ export function buildTiger(opts = {}) {
   root.add(rear);
   root.add(plate(L.hullWidthLower, 0.42, 0.08, M.hullDark(), 0, 0.66, -(L.hullHalfL - 0.10), -20 * DEG));
 
+  if (lod < 2) root.add(buildWelds(lod));
   root.add(buildHullFront(lod));
   root.add(buildHullRoof(lod));
   root.add(buildHullSides(lod));
@@ -697,7 +987,6 @@ export function buildTiger(opts = {}) {
   const trackL = buildTrack(-1, lod);
   const trackR = buildTrack(1, lod);
   root.add(trackL, trackR);
-  root.add(buildTrackFace(-1, lod), buildTrackFace(1, lod));
 
   // ---- Turret --------------------------------------------------------------
   const turret = buildTurret(lod);
@@ -777,39 +1066,61 @@ export function updateTiger(model, vehicle, dt) {
 }
 
 const _dummy = new THREE.Object3D();
-function animateTrack(inst, speed, dt, broken) {
-  const d = inst.userData;
-  if (!d) return;
+
+/**
+ * Scroll the track around its loop at the speed the track is actually running.
+ * Because the path is arc-length parameterised, advancing every link by the
+ * same distance keeps them evenly pitched all the way round — including through
+ * the sprocket and idler wraps, where the previous version scattered them.
+ */
+function animateTrack(group, speed, dt, broken) {
+  const d = group.userData;
+  if (!d?.links) return;
+
   if (broken) {
-    // A thrown track sags and stops. It stays visible because it is still there,
-    // draped over the running gear and in the mud.
+    // A thrown track does not scroll. It sags off the running gear and lies in
+    // the mud, and it stays visible because it is still there.
     if (!d.brokenApplied) {
       d.brokenApplied = true;
-      for (let i = 0; i < d.linkCount; i++) {
-        const p = d.path[i % d.path.length];
-        _dummy.position.set(d.sx * 1.49, Math.min(p.y, 0.12), p.z);
-        _dummy.rotation.set(p.rot + (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.2, 0);
-        _dummy.updateMatrix();
-        inst.setMatrixAt(i, _dummy.matrix);
+      for (const mesh of [d.links, d.horns]) {
+        if (!mesh) continue;
+        const yOff = mesh === d.horns ? 0.058 : 0;
+        for (let i = 0; i < d.linkCount; i++) {
+          const p = sampleTrack(d.path, i * d.linkPitch);
+          // Everything above the wheels drops; the ground run stays put.
+          const sag = p.y > 0.35 ? Math.min(p.y - 0.06, 0.55) : 0;
+          _dummy.position.set(
+            d.sx * 1.49 + (Math.random() - 0.5) * 0.10,
+            p.y - sag + yOff,
+            p.z + (Math.random() - 0.5) * 0.12);
+          _dummy.rotation.set(-p.rot + (Math.random() - 0.5) * 0.5,
+            (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.2);
+          _dummy.updateMatrix();
+          mesh.setMatrixAt(i, _dummy.matrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
       }
-      inst.instanceMatrix.needsUpdate = true;
     }
     return;
   }
-  d.brokenApplied = false;
-  d.offset = (d.offset + (speed * dt) / 0.24) % d.path.length;
-  if (Math.abs(speed) < 0.02) return;
-  const off = d.offset;
-  for (let i = 0; i < d.linkCount; i++) {
-    const p = d.path[(Math.floor(i + off) % d.path.length + d.path.length) % d.path.length];
-    _dummy.position.set(d.sx * 1.49, p.y, p.z);
-    _dummy.rotation.set(p.rot, 0, 0);
-    _dummy.updateMatrix();
-    inst.setMatrixAt(i, _dummy.matrix);
-  }
-  inst.instanceMatrix.needsUpdate = true;
-}
 
+  if (d.brokenApplied) d.brokenApplied = false;
+  if (Math.abs(speed) < 0.02) return;
+
+  d.offset = (d.offset + speed * dt) % d.path.length;
+  for (const mesh of [d.links, d.horns]) {
+    if (!mesh) continue;
+    const yOff = mesh === d.horns ? 0.058 : 0;
+    for (let i = 0; i < d.linkCount; i++) {
+      const p = sampleTrack(d.path, i * d.linkPitch + d.offset);
+      _dummy.position.set(d.sx * 1.49, p.y + yOff, p.z);
+      _dummy.rotation.set(-p.rot, 0, 0);
+      _dummy.updateMatrix();
+      mesh.setMatrixAt(i, _dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+}
 
 /**
  * Measure a built Tiger against the historical figures.

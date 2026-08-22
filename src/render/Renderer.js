@@ -455,8 +455,14 @@ export class Renderer {
     };
   }
 
+  /**
+   * The turret lamp. A Tiger had ONE small bulb in the fighting compartment, and
+   * with the hatch shut that plus five slits of daylight was all the light the
+   * crew had. It must never approach daylight, or buttoning up stops being a
+   * sacrifice.
+   */
   setInteriorLighting(on, pos, hatchOpen) {
-    this.interiorLight.intensity = on ? (hatchOpen ? 2.4 : 1.5) : 0;
+    this.interiorLight.intensity = on ? (hatchOpen ? 0.85 : 0.45) : 0;
     if (pos) this.interiorLight.position.copy(pos);
   }
 
