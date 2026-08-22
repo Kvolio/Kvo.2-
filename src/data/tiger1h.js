@@ -588,4 +588,59 @@ export const TIGER_1H = {
   ARMOUR, COMPONENTS, AMMO_RACKS, STATIONS, HATCHES, COMPARTMENTS, FIRE_SYSTEM, L,
 };
 
+// ---------------------------------------------------------------------------
+//  HANDEDNESS
+//
+//  Everything above was authored with "+X is the crew's right". With the
+//  vehicle's forward along +Z and up along +Y, that is a LEFT-handed frame, and
+//  three.js is right-handed. The consequence was not subtle: the whole tank
+//  rendered mirrored. In an orthographic front view the bow machine gun sat on
+//  the viewer's right, where the driver's visor belongs, and the commander's
+//  cupola was on the wrong side of the turret roof. Every asymmetric feature on
+//  the vehicle was on the wrong side, and the crew were sitting in each other's
+//  seats.
+//
+//  In a right-handed frame with forward +Z and up +Y, the crew's right is -X.
+//  Rather than flip several hundred literals by hand — and get one of them
+//  wrong — the vehicle frame is mirrored once, here, as the single operation it
+//  actually is. The renderer applies the matching mirror to the geometry, so
+//  data and model stay in agreement.
+//
+//  A mirror is a symmetry: no thickness, angle, mass or distance changes, so
+//  nothing in the ballistics is affected. Only the side each thing is on.
+// ---------------------------------------------------------------------------
+
+function mirrorPoint(p) { if (Array.isArray(p) && p.length === 3) p[0] = -p[0]; }
+
+function mirrorVehicleFrame() {
+  for (const pl of ARMOUR) {
+    mirrorPoint(pl.centre);
+    mirrorPoint(pl.normal);
+    // The tangent basis is mirrored with the plate rather than recomputed, so
+    // halfU and halfV keep measuring along the same physical edges. The basis
+    // becomes left-handed; nothing reads it for handedness, only for extent.
+    mirrorPoint(pl.u);
+    mirrorPoint(pl.v);
+  }
+  for (const c of Object.values(COMPONENTS)) mirrorPoint(c.pos);
+  for (const r of AMMO_RACKS) mirrorPoint(r.pos);
+  for (const st of Object.values(STATIONS)) {
+    for (const k of ['seat', 'eye', 'eyeButtonedUp', 'eyeHeadOut']) mirrorPoint(st[k]);
+    // Blocked arcs are azimuths, and a mirror sends theta to -theta.
+    const arcs = st.vision?.blockedArcs;
+    if (arcs) {
+      for (const a of arcs) { const [lo, hi] = a; a[0] = (360 - hi) % 360; a[1] = (360 - lo) % 360; }
+    }
+  }
+  for (const h of Object.values(HATCHES)) mirrorPoint(h.pos);
+  for (const cp of Object.values(COMPARTMENTS)) {
+    if (cp.min && cp.max) {
+      const lo = -cp.max[0], hi = -cp.min[0];
+      cp.min[0] = lo; cp.max[0] = hi;
+    }
+  }
+}
+
+mirrorVehicleFrame();
+
 export default TIGER_1H;

@@ -583,8 +583,14 @@ function buildCupola(lod) {
   const g = new THREE.Group();
   g.name = 'cupola';
   const R = 0.245;
-  const H = L.cupolaTopY - L.turretRoofY;     // 0.48 m
+  // The published 3.00 m overall height is measured to the top of the cupola
+  // WITH THE HATCH CLOSED, so the hatch plate has to come out of the drum's
+  // height rather than sit on top of it. Built the other way the tank stood
+  // 3.045 m tall — inside the old test's tolerance, and caught the moment the
+  // orthographic check applied a real one.
+  const HATCH_T = 0.045;
   const baseY = L.turretRoofY;
+  const H = L.cupolaTopY - HATCH_T - baseY;   // 0.435 m of drum
 
   const drum = cyl(R, R + 0.012, H, lod === 0 ? 24 : 12, M.turret(), 0, baseY + H / 2, 0);
   g.add(drum);
@@ -611,8 +617,8 @@ function buildCupola(lod) {
   const hatchPivot = new THREE.Group();
   hatchPivot.position.set(0, baseY + H, -R * 0.92);
   const hatch = new THREE.Mesh(
-    new THREE.CylinderGeometry(R + 0.02, R + 0.02, 0.045, lod === 0 ? 20 : 10), M.turret());
-  hatch.position.set(0, 0.022, R * 0.92);
+    new THREE.CylinderGeometry(R + 0.02, R + 0.02, HATCH_T, lod === 0 ? 20 : 10), M.turret());
+  hatch.position.set(0, HATCH_T / 2, R * 0.92);
   hatch.castShadow = true;
   hatchPivot.add(hatch);
   if (lod < 2) {
@@ -1169,7 +1175,10 @@ export function buildTiger(opts = {}) {
   root.add(box(L.hullWidthUpper - 0.16, 0.78, 5.05, M.hull(), 0, 1.36, 0.18));
 
   // ---- Rear plate ----------------------------------------------------------
-  const rear = plate(L.hullWidthUpper, 0.95, 0.08, M.hull(), 0, 1.22, -(L.hullHalfL - 0.02), 8 * DEG);
+  // Positioned so the plate's OUTER FACE lands at exactly -L.hullHalfL, because
+  // the published 6.316 m hull length is an outside dimension. The plate leans
+  // back 8 degrees, so half its thickness projects 0.0396 m along -Z.
+  const rear = plate(L.hullWidthUpper, 0.95, 0.08, M.hull(), 0, 1.22, -(L.hullHalfL - 0.0396), 8 * DEG);
   root.add(rear);
   root.add(plate(L.hullWidthLower, 0.42, 0.08, M.hullDark(), 0, 0.66, -(L.hullHalfL - 0.10), -20 * DEG));
 
@@ -1221,6 +1230,23 @@ export function buildTiger(opts = {}) {
   // Collect the hull hatches from wherever they ended up in the hierarchy.
   root.traverse((o) => { if (o.userData?.hatches) root.userData.hullHatches = o.userData.hatches; });
 
+  // ---- HANDEDNESS ---------------------------------------------------------
+  // Every literal above is written in the authoring convention "+X is the
+  // crew's right". With forward along +Z and up along +Y that is a LEFT-handed
+  // frame, and three.js is right-handed, so the tank rendered mirrored: in an
+  // orthographic front view the bow machine gun sat on the viewer's right where
+  // the driver's visor belongs, and the cupola was on the wrong side of the
+  // roof. src/data/tiger1h.js mirrors the vehicle data once for the same
+  // reason; this is the matching mirror for the geometry, so the two agree.
+  //
+  // three.js handles a negative determinant correctly — it flips the winding
+  // for face culling and the normal matrix takes care of the lighting. What it
+  // does NOT do is flip rotations, and a mirror conjugates them: rotations
+  // about Y and Z come out reversed under it, rotations about X do not. Every
+  // animated Y or Z rotation below is negated to compensate, and that is the
+  // whole of the cost.
+  root.scale.x = -1;
+
   return root;
 }
 
@@ -1232,7 +1258,9 @@ export function updateTiger(model, vehicle, dt) {
   const u = model.userData;
   if (!u) return;
 
-  u.turret.rotation.y = vehicle.turretAz || 0;
+  // Negated: the model root is mirrored (see buildTiger), and a mirror reverses
+  // rotations about Y. Without this the turret traverses the wrong way.
+  u.turret.rotation.y = -(vehicle.turretAz || 0);
   if (u.gun) u.gun.rotation.x = -(vehicle.gunElev || 0);
 
   // Recoil: the barrel runs back 580 mm and returns.
@@ -1248,12 +1276,14 @@ export function updateTiger(model, vehicle, dt) {
   }
   if (u.loaderHatch) {
     const target = vehicle.hatchOpen?.loader_hatch ? -95 * DEG : 0;
-    u.loaderHatch.rotation.z += (target - u.loaderHatch.rotation.z) * Math.min(1, dt * 4);
+    // Negated with the mirror, as above, or the hatch hinges the wrong way.
+    const lt = -target;
+    u.loaderHatch.rotation.z += (lt - u.loaderHatch.rotation.z) * Math.min(1, dt * 4);
   }
   for (const [name, pivot] of Object.entries(u.hullHatches || {})) {
     const target = vehicle.hatchOpen?.[name] ? 85 * DEG : 0;
     const sign = name === 'driver_hatch' ? 1 : -1;
-    pivot.rotation.z += (target * sign - pivot.rotation.z) * Math.min(1, dt * 3.5);
+    pivot.rotation.z += (-target * sign - pivot.rotation.z) * Math.min(1, dt * 3.5);
   }
 
   // Tracks: scroll the link belt at the speed each track is actually running.
@@ -1346,8 +1376,10 @@ export function measureTiger(THREE_NS, model) {
   const box = new THREE_NS.Box3().setFromObject(model);
   const size = box.getSize(new THREE_NS.Vector3());
 
-  // The rear armour plate, which is what the published length measures to.
-  const hullRearZ = -(L.hullHalfL - 0.02) - 0.11;
+  // The published length is muzzle to the rear armour plate, and the hull's
+  // 6.316 m is an outside dimension, so the reference is simply the back of the
+  // hull. The Feifel cylinders hang off behind it and are reported separately.
+  const hullRearZ = -L.hullHalfL;
   const muzzleZ = box.max.z;
 
   return {

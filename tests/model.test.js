@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { buildTiger, measureTiger, updateTiger } from '../src/render/TigerModel.js';
-import { TIGER_1H, L } from '../src/data/tiger1h.js';
+import { TIGER_1H, L, STATIONS } from '../src/data/tiger1h.js';
 
 test('the Tiger model matches the researched dimensions', () => {
   const t = buildTiger({ lod: 0 });
@@ -75,7 +75,14 @@ test('turret, gun and hatches are animated from vehicle state', () => {
     components: {},
   };
   for (let i = 0; i < 60; i++) updateTiger(t, fake, 1 / 60);
-  assert.ok(Math.abs(t.userData.turret.rotation.y - 0.8) < 1e-6, 'turret follows azimuth');
+  // Checked in WORLD space, not as a local rotation value. The model root is
+  // mirrored to make the vehicle frame right-handed, and a mirror reverses
+  // rotations about Y — so the local number is -0.8 while the turret is
+  // correctly pointing at +0.8. Asserting the local value would have been an
+  // assertion about the implementation rather than about where the gun points.
+  t.updateMatrixWorld(true);
+  const fwd = new THREE.Vector3(0, 0, 1).transformDirection(t.userData.turret.matrixWorld);
+  assert.ok(Math.abs(Math.atan2(fwd.x, fwd.z) - 0.8) < 1e-6, 'turret points along the azimuth');
   assert.ok(Math.abs(t.userData.gun.rotation.x + 0.12) < 1e-6, 'gun follows elevation');
   assert.ok(t.userData.cupolaHatch.rotation.x < -1.0, 'the cupola hatch opened');
 });
@@ -90,4 +97,25 @@ test('a broken track visibly stops and sags instead of scrolling', () => {
   updateTiger(t, fake, 1 / 60);
   assert.equal(t.userData.tracks.left.userData.brokenApplied, true);
   assert.notEqual(t.userData.tracks.right.userData.brokenApplied, true);
+});
+
+test('the vehicle frame is right-handed, so the crew are not sitting in each other\'s seats', () => {
+  // With forward along +Z and up along +Y, a right-handed frame puts the crew's
+  // RIGHT at -X. Authored the other way the whole tank renders mirrored: the
+  // bow machine gun ends up on the driver's side and the cupola on the loader's.
+  // This test exists because that is exactly what happened, and it survived
+  // every other check in this suite.
+  assert.ok(STATIONS.radio.seat[0] < 0, 'the radio operator sits on the crew RIGHT, which is -X');
+  assert.ok(STATIONS.loader.seat[0] < 0, 'the loader works on the crew RIGHT');
+  assert.ok(STATIONS.driver.seat[0] > 0, 'the driver sits on the crew LEFT, which is +X');
+  assert.ok(STATIONS.gunner.seat[0] > 0, 'the gunner sits on the crew LEFT');
+
+  // And the model must agree with the data, or a penetration that kills the
+  // loader will be drawn going through the gunner.
+  const t = buildTiger({ lod: 0 });
+  t.updateMatrixWorld(true);
+  const cupola = new THREE.Vector3().setFromMatrixPosition(t.userData.cupola.matrixWorld);
+  assert.ok(cupola.x > 0, 'the cupola is on the commander\'s side, +X');
+  assert.equal(Math.sign(cupola.x), Math.sign(STATIONS.commander.seat[0]),
+    'model and data must put the commander on the same side of the tank');
 });

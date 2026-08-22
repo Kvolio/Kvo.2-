@@ -77,3 +77,69 @@ These are checked automatically where they can be, so they cannot regress:
 - the tracks rest on the ground, never floating above it
 - a broken track sags and stops rather than scrolling
 - lower levels of detail drop fittings, never dimensions
+
+---
+
+# ROUND 2 — the modelling pipeline
+
+The brief changed: gameplay development stops, and the Tiger I becomes a
+hero-quality asset judged by independent critics against the user's Kursk
+photographs and technical diagram. `docs/TIGER-CONFIGURATION.md` is the
+configuration lock every finding is now judged against, and
+`docs/reference/MANIFEST.md` is the reference board awaiting the pack.
+
+## The first tool found the worst defect in the project
+
+`tools/ortho.mjs` renders the Tiger in true orthographic projection at an exact
+5 mm per pixel and measures it from the geometry rather than from the render.
+It found three things on its first run, one of them severe.
+
+| Finding | Severity | Status |
+|---|---|---|
+| **The entire vehicle was mirrored.** Every asymmetric feature was on the wrong side: the bow machine gun on the driver's side, the driver's visor on the radio operator's, the cupola on the loader's side of the turret roof, the TZF 9b apertures right of the gun and the coaxial port left. | **CRITICAL** | **fixed** |
+| Height to the top of the cupola was 3.045 m against 3.00 m — the hatch plate was sitting on top of the drum instead of being counted in it | MAJOR | **fixed** |
+| Length reported 8.78 m — a measurement-definition error in the new tool, not a model defect; the published 8.45 m is muzzle to rear plate and excludes the Feifel cylinders | — | tool corrected, and the rear plate moved 20 mm so its outer face lands exactly on the hull's 6.316 m |
+
+### On the mirror
+
+The vehicle frame was authored as "+X is the crew's right" with forward along
++Z and up along +Y. That combination is left-handed, and three.js is
+right-handed, so the tank rendered as its own reflection. Nothing in the
+simulation was wrong — a mirror is a symmetry, so no thickness, angle or
+penetration result changes — but every photograph comparison would have failed
+on it, and the damage model would have drawn a shell that killed the loader
+passing through the gunner.
+
+It was fixed as the single operation it actually is: one mirror of the vehicle
+data in `src/data/tiger1h.js`, and the matching mirror of the geometry in
+`buildTiger()`, rather than several hundred hand-flipped literals. The one cost
+is that a mirror reverses rotations about Y and Z, so the turret traverse and
+the hatch hinges are negated to compensate; rotations about X are unaffected.
+
+**Why no existing check caught it.** The dimensional test measures a bounding
+box, and a mirrored tank has the same bounding box. The 53-test suite tested the
+simulation, which was correct. Every gallery capture showed it, and neither I
+nor three blind critics noticed, because a Tiger is nearly symmetrical and the
+eye supplies the rest. It took an orthographic front view with a stated
+handedness to make it undeniable. There is now a regression test
+(`tests/model.test.js`) asserting both the data and the model put each crewman
+on the correct side.
+
+### Outstanding after this batch
+
+| Finding | Severity | Status |
+|---|---|---|
+| Mantlet reads as a soft grey loaf — the lathe profile's steps are correct but `computeVertexNormals()` averages every step edge away | MAJOR | next: `toCreasedNormals` at ~40° |
+| 23 road wheels found on the right side; 8 stations × 3 ranks is 24 | MAJOR | to diagnose |
+| Intake louvres are bright machined metal where they should be painted armour | MINOR | pending |
+| Exhaust stacks and Feifel drums are featureless black cylinders | MINOR | pending |
+| No tow shackles, no Bosch headlight guard, no spare track links on the nose | MINOR | pending |
+| Whole vehicle sits in one beige value range, so it reads as a single mass at distance | MAJOR | Phase F |
+
+## Deferred by the new brief
+
+The rye field renders as opaque pastel quads filling the horizon
+(`src/world/Props.js:81` sets `alphaTest` on a material with no map). It is a
+named absolute failure condition and a one-material fix, but §61 is explicit
+that the battlefield is not built around a bad Tiger. It stays logged here until
+the vehicles pass.
