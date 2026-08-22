@@ -103,6 +103,21 @@ export const M = {
     { color: 0xffffff, roughness: 1, metalness: 0.35, normalScale: 1.0 }, repeat, DUNKELGELB),
 
   /** The same paint on smaller fittings, tiled tighter so the grain scales. */
+  /**
+   * The lower hull, the running gear surrounds and everything below the fender
+   * line. A Tiger's dirt is not evenly distributed: the upper surfaces stay
+   * more or less the colour they were painted and everything from the sponson
+   * down is caked, and that hard-ish line at the fender is doing a great deal
+   * of the work of making the vehicle look real in every photograph.
+   *
+   * It is a separate material rather than a gradient because a gradient baked
+   * into a tiling texture repeats as a band at every tile edge, and a gradient
+   * in world height drifts as the tank climbs a hill.
+   */
+  hullLower: (repeat = 2) => standard('hullLower',
+    () => TEX.paintedSteel({ wear: 0.95, tint: [0.50, 0.44, 0.31] }),
+    { roughness: 0.95, metalness: 0.05 }, repeat, 0x7d7053),
+
   hullDetail: () => standard('hullDetail', () => TEX.paintedSteel({ wear: 0.75 }),
     { color: 0xffffff, roughness: 1, metalness: 0.35, normalScale: 1.2 }, 6, 0x9c8a5c),
 

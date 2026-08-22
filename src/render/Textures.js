@@ -211,10 +211,20 @@ export function paintedSteel(opts = {}) {
       // Chipping: sparse, sharp, revealing primer.
       const chipField = ridged(u * 26, v * 26, 41, 3);
       const chip = chipField > (1 - 0.13 * wear) ? 1 : 0;
-      // Fine scratches.
-      const scratch = ridged(u * 90, v * 12, 67, 2) > 0.93 ? 0.12 : 0;
-      // Dust film, heavier low down (v is used as a proxy for height on a plate).
-      const dust = fbm(u * 8, v * 8, 89, 3) * 0.10 * (0.4 + v * 0.8);
+      // Fine scratches. These were authored at 90:12 — a twelve-to-one stretch
+      // along v — which laid long parallel streaks across every plate and made
+      // the whole tank read as varnished planking. Rolled armour under sprayed
+      // paint has no grain at this scale. Kept faintly directional, because
+      // brush and rag marks do run one way, but nothing like enough to read as
+      // timber, and rarer so they are incidents rather than a pattern.
+      const scratch = ridged(u * 60, v * 34, 67, 2) > 0.965 ? 0.10 : 0;
+      // Dust film. The height term that used to be here (v as a proxy for
+      // height up the plate) was a LINEAR GRADIENT INSIDE A TILED TEXTURE, so
+      // it repeated as a hard band at every tile boundary — several stripes
+      // down the side of a hull that tiles four times. Height-varying dirt
+      // cannot live in the tile; it is a separate material for the parts that
+      // actually sit low on the vehicle.
+      const dust = fbm(u * 8, v * 8, 89, 3) * 0.10;
 
       let r = tint[0] + grain + mottle - scratch;
       let g = tint[1] + grain + mottle - scratch;
@@ -238,8 +248,8 @@ export function paintedSteel(opts = {}) {
       // Paint is matt; chips and worn edges are rougher still; dust is rougher.
       const base = 0.74 + fbm(u * 9, v * 9, 31, 3) * 0.12;
       const chip = ridged(u * 26, v * 26, 41, 3) > (1 - 0.13 * wear) ? 0.14 : 0;
-      const dust = fbm(u * 8, v * 8, 89, 3) * 0.10;
-      const r = Math.min(0.98, base + chip + dust);
+      const dustR = fbm(u * 8, v * 8, 89, 3) * 0.10;
+      const r = Math.min(0.98, base + chip + dustR);
       return [r, r, r];
     });
 

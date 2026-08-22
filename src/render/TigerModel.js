@@ -25,6 +25,7 @@ import { L, TIGER_1H } from '../data/tiger1h.js';
 import { M } from './Materials.js';
 import * as MARK from './Markings.js';
 import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const DEG = Math.PI / 180;
 
@@ -35,9 +36,32 @@ const TRACK_THICKNESS = 0.055;
 const SPROCKET_Y = 0.86;
 const IDLER_Y = 0.74;
 
-/** Small helper: a box positioned by its centre. */
+/**
+ * Whether plate edges get a chamfer. Off for the distant LODs, where the extra
+ * nine triangles per box buy nothing.
+ */
+let CHAMFER = true;
+
+/**
+ * A box positioned by its centre — with its edges broken, if it is big enough
+ * to be a piece of armour rather than a fitting.
+ *
+ * Every edge on this model was a knife edge, so nothing took an edge highlight
+ * and the whole vehicle read as soft and papery under any light. Flame-cut
+ * armour plate does not have sharp arrises anyway. The chamfer is a few
+ * millimetres and it is the cheapest large improvement available: the rounded
+ * geometry keeps the box's exact bounding size, so none of the dimensional
+ * contracts move.
+ */
 function box(w, h, d, mtl, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mtl);
+  const lo = Math.min(w, h, d), hi = Math.max(w, h, d);
+  let geo;
+  if (CHAMFER && lo > 0.05 && hi > 0.30) {
+    geo = new RoundedBoxGeometry(w, h, d, 1, Math.min(0.010, lo * 0.18));
+  } else {
+    geo = new THREE.BoxGeometry(w, h, d);
+  }
+  const m = new THREE.Mesh(geo, mtl);
   m.position.set(x, y, z);
   m.castShadow = true; m.receiveShadow = true;
   return m;
@@ -991,10 +1015,29 @@ function buildTurret(lod) {
   const barrelStart = 0.70;                       // emerges from the mantlet
   const barrelEnd = muzzleLocalZ - BRAKE_LEN;
   const barrelLen = barrelEnd - barrelStart;
-  const barrel = cyl(0.062, 0.078, barrelLen, lod === 0 ? 16 : 8, M.barrel(),
+  const barrel = cyl(0.062, 0.078, barrelLen, lod === 0 ? 24 : 10, M.barrel(),
     0, 0, barrelStart + barrelLen / 2);
   barrel.rotation.x = Math.PI / 2;
   gunGroup.add(barrel);
+
+  // THE RECOIL SLEEVE. The tube does not emerge from the mantlet at its
+  // finished diameter — it comes out inside a much fatter jacket and steps down
+  // to the tube about a third of the way along. Without it the 8.8 is a
+  // constant-diameter pipe, and a constant-diameter pipe is what every
+  // long-gunned tank looks like. The step is one of the clearest things in a
+  // side-on photograph of a Tiger.
+  const sleeveLen = 0.62;
+  const sleeve = cyl(0.092, 0.112, sleeveLen, lod === 0 ? 20 : 10, M.gunSteel(),
+    0, 0, barrelStart + sleeveLen / 2 - 0.06);
+  sleeve.rotation.x = Math.PI / 2;
+  gunGroup.add(sleeve);
+  if (lod < 2) {
+    // The step ring where the sleeve ends and the tube runs on.
+    const step = cyl(0.086, 0.094, 0.035, lod === 0 ? 20 : 10, M.gunSteel(),
+      0, 0, barrelStart + sleeveLen - 0.06);
+    step.rotation.x = Math.PI / 2;
+    gunGroup.add(step);
+  }
   // ---- The double-baffle muzzle brake ------------------------------------
   // The Tiger's silhouette signature, and it has to be real geometry: a mount
   // collar, two chambers with open ports out of each side, and an end cap. A
@@ -1274,7 +1317,7 @@ function buildHullSides(lod) {
   }
   // 60 mm lower tub sides, matching the tub they belong to.
   for (const sx of [-1, 1]) {
-    g.add(box(0.06, 0.56, L.hullLength - 0.30, M.hullDark(), sx * L.hullHalfWL, 0.75, 0));
+    g.add(box(0.06, 0.56, L.hullLength - 0.30, M.hullLower(), sx * L.hullHalfWL, 0.75, 0));
   }
 
   if (lod < 2) {
@@ -1400,12 +1443,13 @@ function buildMarkings(lod, turmNummer) {
  */
 export function buildTiger(opts = {}) {
   const lod = opts.lod ?? 0;
+  CHAMFER = lod === 0;
   const root = new THREE.Group();
   root.name = 'TigerIAusfH';
 
   // ---- Lower hull tub ------------------------------------------------------
-  root.add(box(L.hullWidthLower, 0.55, L.hullLength - 0.30, M.hullDark(), 0, 0.75, 0));
-  root.add(box(L.hullWidthLower, 0.05, L.hullLength - 0.30, M.hullDark(), 0, L.hullFloorY, 0));
+  root.add(box(L.hullWidthLower, 0.55, L.hullLength - 0.30, M.hullLower(), 0, 0.75, 0));
+  root.add(box(L.hullWidthLower, 0.05, L.hullLength - 0.30, M.hullLower(), 0, L.hullFloorY, 0));
 
   // ---- Superstructure box --------------------------------------------------
   // Spans from the driver's plate all the way back to the rear plate. It was
@@ -1420,7 +1464,7 @@ export function buildTiger(opts = {}) {
   // back 8 degrees, so half its thickness projects 0.0396 m along -Z.
   const rear = plate(L.hullWidthUpper, 0.95, 0.08, M.hull(), 0, 1.22, -(L.hullHalfL - 0.0396), 8 * DEG);
   root.add(rear);
-  root.add(plate(L.hullWidthLower, 0.42, 0.08, M.hullDark(), 0, 0.66, -(L.hullHalfL - 0.10), -20 * DEG));
+  root.add(plate(L.hullWidthLower, 0.42, 0.08, M.hullLower(), 0, 0.66, -(L.hullHalfL - 0.10), -20 * DEG));
 
   if (lod < 2) root.add(buildWelds(lod));
   root.add(buildHullFront(lod));
