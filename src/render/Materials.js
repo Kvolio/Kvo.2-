@@ -23,6 +23,23 @@ export const INTERIOR_IVORY = 0xd8d2c0;  // Tiger interiors were painted ivory
 export const INTERIOR_RED = 0x8a4030;    // red oxide primer below the sponsons
 export const PANZER_BLACK = 0x232326;
 
+/**
+ * A NOTE ON METALNESS, because everything here was authored two to three times
+ * too metallic and it cost the whole vehicle its material separation.
+ *
+ * In a metallic PBR workflow, metalness 1 means the albedo becomes the specular
+ * F0 and there is NO DIFFUSE TERM AT ALL — every photon that comes back is a
+ * reflection. Pair that with roughness 1 and the reflection is maximally
+ * blurred, so the surface returns the average radiance of whatever it faces.
+ * Under a hull, facing dark ground, that is black. A critic reported the tracks
+ * and tyres as "pure flat black with no lighting response, reading as a hole
+ * rather than as rubber", and that is exactly what the numbers were asking for.
+ *
+ * Physically: paint is a dielectric, metalness 0. Rusted, dusty, sooted or
+ * greasy metal is mostly covered in dielectric too and belongs low. Only clean
+ * machined metal, brass and the bare steel exposed by a fresh penetration are
+ * genuinely metallic.
+ */
 const cache = new Map();
 
 /**
@@ -100,7 +117,7 @@ export const M = {
   // ---- The Tiger's own steel -------------------------------------------
   /** Rolled armour plate in Dunkelgelb. The bulk of the vehicle. */
   hull: (repeat = 2) => standard('hull', () => TEX.paintedSteel({ wear: 0.5 }),
-    { color: 0xffffff, roughness: 1, metalness: 0.35, normalScale: 1.0 }, repeat, DUNKELGELB),
+    { color: 0xffffff, roughness: 1, metalness: 0.03, normalScale: 1.0 }, repeat, DUNKELGELB),
 
   /** The same paint on smaller fittings, tiled tighter so the grain scales. */
   /**
@@ -132,27 +149,27 @@ export const M = {
    * extrusion of the same beige slab.
    */
   barrel: () => standard('barrel', () => TEX.gunTube(),
-    { color: 0xffffff, roughness: 1, metalness: 0.62, normalScale: 0.9 }, 3, 0x776a4c),
+    { color: 0xffffff, roughness: 1, metalness: 0.15, normalScale: 0.9 }, 3, 0x776a4c),
 
   /** The muzzle brake and breech end: bare, blued, heat-stained steel. */
   gunSteel: () => standard('gunSteel', () => TEX.machinedMetal({ tint: [0.17, 0.16, 0.15] }),
-    { color: 0xffffff, roughness: 1, metalness: 0.88, normalScale: 1.0 }, 5, 0x24211e),
+    { color: 0xffffff, roughness: 1, metalness: 0.60, normalScale: 1.0 }, 5, 0x24211e),
 
   /** Bare machined steel: breech, tools, pins, hinges. */
   steel: (repeat = 4) => standard('steel', () => TEX.machinedMetal(),
-    { color: 0xffffff, roughness: 1, metalness: 0.92, normalScale: 0.9 }, repeat, 0x6c6c70),
+    { color: 0xffffff, roughness: 1, metalness: 0.45, normalScale: 0.9 }, repeat, 0x6c6c70),
 
   /** Dark oiled or blued steel: MG barrels, exhaust guards, muzzle brake. */
   darkSteel: (repeat = 4) => standard('darkSteel', () => TEX.machinedMetal({ tint: [0.13, 0.13, 0.14] }),
-    { color: 0xffffff, roughness: 1, metalness: 0.86, normalScale: 0.9 }, repeat, 0x2a2a2c),
+    { color: 0xffffff, roughness: 1, metalness: 0.25, normalScale: 0.9 }, repeat, 0x2a2a2c),
 
   /** Track links. Bright where they run, muddy and rusted where they do not. */
   track: (repeat = 1) => standard('track', () => TEX.trackSteel(),
-    { color: 0xffffff, roughness: 1, metalness: 0.88, normalScale: 1.4 }, repeat, 0x55534e),
+    { color: 0xffffff, roughness: 1, metalness: 0.22, normalScale: 1.4 }, repeat, 0x55534e),
 
   /** Road wheel discs — painted like the hull but far dirtier. */
   wheel: () => standard('wheel', () => TEX.paintedSteel({ wear: 0.9, tint: [0.55, 0.49, 0.33] }),
-    { color: 0xffffff, roughness: 1, metalness: 0.35, normalScale: 1.1 }, 3, 0x8d7d55),
+    { color: 0xffffff, roughness: 1, metalness: 0.05, normalScale: 1.1 }, 3, 0x8d7d55),
 
   /** Road wheel tyres. Rubber-tyred wheels are a mid-1943 feature. */
   rubber: () => standard('rubber', () => TEX.rubber(),

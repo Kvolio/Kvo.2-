@@ -372,10 +372,15 @@ export function rubber() {
       // looks like in any photograph. These tyres live in Russian dust, and
       // dust is most of what the light comes back off. Base raised and the
       // dust term given real weight.
-      const g = fbm(u * 70, v * 70, 101, 3) * 0.05;
-      const dust = fbm(u * 6, v * 6, 103, 3) * 0.26;
-      const base = 0.085 + g;
-      return [base + dust * 0.62, base + dust * 0.55, base + dust * 0.43];
+      // These numbers are written into an sRGB-tagged texture, so they are
+      // DISPLAY values, not linear reflectances. Authored at 0.085 on the
+      // reasoning that clean rubber sits near 5% reflectance, they came out at
+      // 22/255 — near black — and the tyres rendered as holes punched in the
+      // running gear. A dusty tyre in a photograph sits around 70/255.
+      const g = fbm(u * 70, v * 70, 101, 3) * 0.06;
+      const dust = fbm(u * 6, v * 6, 103, 3) * 0.22;
+      const base = 0.235 + g;
+      return [base + dust * 0.55, base + dust * 0.48, base + dust * 0.36];
     });
     const normal = normalFromHeight(size, (x, y, u, v) => fbm(u * 110, v * 110, 101, 3), 0.9);
     const rough = generate(size, () => [0.94, 0.94, 0.94]);
