@@ -1,0 +1,70 @@
+{
+  "side": {
+    "file": "docs/reference/diagrams/views/side.png",
+    "cropPx": [
+      20,
+      7,
+      457,
+      206
+    ],
+    "sourcePixelsPerMetre": 51.72,
+    "assumedRealWidthM": 8.45,
+    "resampledTo": [
+      1690,
+      770
+    ],
+    "pixelsPerMetre": 200.0,
+    "metresPerPixel": 0.005
+  },
+  "plan": {
+    "file": "docs/reference/diagrams/views/plan.png",
+    "cropPx": [
+      12,
+      218,
+      457,
+      417
+    ],
+    "sourcePixelsPerMetre": 52.66,
+    "assumedRealWidthM": 8.45,
+    "resampledTo": [
+      1690,
+      756
+    ],
+    "pixelsPerMetre": 200.0,
+    "metresPerPixel": 0.005
+  },
+  "front": {
+    "file": "docs/reference/diagrams/views/front.png",
+    "cropPx": [
+      40,
+      424,
+      237,
+      634
+    ],
+    "sourcePixelsPerMetre": 53.17,
+    "assumedRealWidthM": 3.705,
+    "resampledTo": [
+      741,
+      790
+    ],
+    "pixelsPerMetre": 200.0,
+    "metresPerPixel": 0.005
+  },
+  "rear": {
+    "file": "docs/reference/diagrams/views/rear.png",
+    "cropPx": [
+      241,
+      424,
+      436,
+      634
+    ],
+    "sourcePixelsPerMetre": 52.63,
+    "assumedRealWidthM": 3.705,
+    "resampledTo": [
+      741,
+      798
+    ],
+    "pixelsPerMetre": 200.0,
+    "metresPerPixel": 0.005
+  }
+}

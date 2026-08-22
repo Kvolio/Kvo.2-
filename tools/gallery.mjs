@@ -148,9 +148,55 @@ const WORLD = [
   ['world-04-horizon', { pos: [0, 3.2, 0], at: [0, 3.0, 900], fov: 50 }],
 ];
 
+// ------------------------------------------------------- the distance ladder
+// The asset has to hold up at every range the player sees it at: a silhouette
+// at 100 m, the major geometry at 20 m, surface detail at 5 m, and modelling
+// and material quality at arm's length. One three-quarter bearing and a fixed
+// 40-degree lens, so the only thing changing between shots is the distance.
+const BEARING = [0.60, 0.20, 0.78];
+const ladder = (metres) => ({
+  pos: [BEARING[0] * metres, BEARING[1] * metres + 1.2, BEARING[2] * metres],
+  at: [0, 1.5, 0], fov: 40,
+});
+const DISTANCE = [
+  ['distance-01-100m', ladder(102)],
+  ['distance-02-20m', ladder(22)],
+  ['distance-03-5m', ladder(7.4)],
+  // At arm's length the bearing stops mattering and the subject does: the
+  // turret side, the mantlet and the running gear are where a tank asset is
+  // usually caught out.
+  ['distance-04-1m-turret', { pos: [2.55, 2.30, 0.30], at: [0.90, 2.15, 0.20], fov: 46 }],
+  ['distance-05-1m-running-gear', { pos: [3.20, 0.95, 1.10], at: [1.70, 0.60, 0.90], fov: 46 }],
+];
+
+// ------------------------------------------------------- the lighting sweep
+// A model that only holds together under one light is not finished. Same
+// camera, seven conditions.
+const LIGHTING = [
+  ['light-01-bright-sun', 'afternoon', 'clear'],
+  ['light-02-overcast', 'afternoon', 'cloudy'],
+  ['light-03-morning', 'morning', 'clear'],
+  ['light-04-evening', 'evening', 'clear'],
+  ['light-05-rain', 'afternoon', 'rain'],
+  ['light-06-haze', 'afternoon', 'fog'],
+  ['light-07-night', 'night', 'clear'],
+];
+
 for (const [name, shot] of TIGER) await capture(name, shot);
 for (const [name, shot] of INTERIOR) await capture(name, shot);
 for (const [name, shot] of WORLD) await capture(name, shot);
+for (const [name, shot] of DISTANCE) await capture(name, shot);
+
+if (!ONLY || ONLY.split(',').some((f) => 'light'.includes(f.trim()) || f.trim().startsWith('light'))) {
+  const sweepCam = { pos: [7.5, 3.0, 10], at: [0, 1.5, 0], fov: 40 };
+  for (const [name, tod, weather] of LIGHTING) {
+    await page.evaluate(([t, w]) => window.__tiger.renderer.setEnvironment(t, w), [tod, weather]);
+    await capture(name, { ...sweepCam, settle: 1800 });
+  }
+  // Leave the world as we found it, so anything captured afterwards is not
+  // quietly rendered at midnight in the rain.
+  await page.evaluate(() => window.__tiger.renderer.setEnvironment('afternoon', 'clear'));
+}
 
 // ---------------------------------------------------------------- in-game views
 // These go through the real camera code, so they show what the player sees.
